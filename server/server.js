@@ -39,11 +39,6 @@ const storage = multer.diskStorage({
     },
     filename: (req, file, cb) => {
         try {
-            // Validate session exists
-            if (!req.session || !req.session.userId) {
-                return cb(new Error("No hay sesión de usuario válida"), null);
-            }
-            
             // Validate file extension
             const ext = path.extname(file.originalname).toLowerCase();
             const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
@@ -53,9 +48,10 @@ const storage = multer.diskStorage({
             }
             
             const timestamp = Date.now();
-            const filename = `${req.session.userId}_profile_${timestamp}${ext}`;
+            // Use a temporary filename, will be renamed after session validation
+            const filename = `temp_${timestamp}${ext}`;
             
-            console.log(`Generated filename for user ${req.session.userId}: ${filename}`);
+            console.log(`Generated temporary filename: ${filename}`);
             cb(null, filename);
         } catch (error) {
             console.error("Error generating filename:", error);
@@ -140,8 +136,8 @@ app.use(session({
     cookie: { 
         httpOnly: true, 
         maxAge: 24 * 60 * 60 * 1000,
-        secure: config.session.secure,
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+        secure: false, // Temporalmente false para debugging
+        sameSite: 'lax'
     },
 }));
 
@@ -547,9 +543,18 @@ app.post("/user/upload-photo", upload.single('profilePicture'), handleMulterErro
     return res.status(500).json({ success: false, error: "El archivo subido no es accesible" });
   }
 
-  console.log(`File uploaded: ${req.file.filename}, size: ${req.file.size}, type: ${req.file.mimetype}`);
-  const relativePath = `/uploads/profile_pics/${path.basename(req.file.filename)}`;
-  const newFilePath = req.file.path;
+  // Rename file with correct userId
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const timestamp = Date.now();
+  const correctFilename = `${req.session.userId}_profile_${timestamp}${ext}`;
+  const correctFilePath = path.join(path.dirname(req.file.path), correctFilename);
+  
+  // Rename the temporary file
+  fs.renameSync(req.file.path, correctFilePath);
+  
+  console.log(`File uploaded and renamed: ${correctFilename}, size: ${req.file.size}, type: ${req.file.mimetype}`);
+  const relativePath = `/uploads/profile_pics/${correctFilename}`;
+  const newFilePath = correctFilePath;
 
   try {
     // Start transaction for atomic operation
