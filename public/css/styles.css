@@ -1,0 +1,1268 @@
+/* ========================
+   GENERAL
+======================== */
+body {
+  background: linear-gradient(135deg, #424242 0%, #303030 100%);
+  color: #E0E0E0;
+  font-family: "Jersey 15", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Título principal MusicBoxd con Jersey 10 */
+.main-title, 
+.navbar-brand,
+#authContainer .display-4 {
+  font-family: "Jersey 10", sans-serif !important;
+  font-size: 3.5rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 1px !important;
+}
+
+/* Modo de autenticación - ocultar scroll y contenido */
+html, body {
+  overflow-x: hidden;
+}
+
+body.auth-mode, 
+html.auth-mode {
+  overflow: hidden !important;
+  height: 100vh !important;
+  width: 100vw !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+}
+
+/* Ocultar scrollbars completamente */
+body.auth-mode::-webkit-scrollbar,
+html.auth-mode::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+}
+
+body.auth-mode,
+html.auth-mode {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+/* Asegurar que el contenido de la app esté completamente oculto */
+body.auth-mode #navbar,
+body.auth-mode #searchContainer,
+body.auth-mode #albumFeed,
+body.auth-mode #profileContainer,
+body.auth-mode #albumDetailContainer {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ========================
+   ALBUM FEED
+======================== */
+#albumFeed .card {
+  margin-bottom: 20px;
+  transition: transform 0.2s;
+  background-color: #525252;
+  border: 1px solid #616161;
+  color: #E0E0E0;
+}
+
+#albumsRow .card-img-top {
+  height: 200px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.clickable-card:hover {
+  transform: scale(1.03);
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+}
+
+/* ========================
+   TOP ALBUMS - CARRUSEL CON SCROLL SNAP
+======================== */
+#topAlbumsRow {
+  display: flex !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  gap: 20px;
+  padding: 20px 60px; /* más padding lateral para las flechas */
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  align-items: center;
+  justify-content: flex-start; /* Importante: no centrar para permitir scroll */
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#topAlbumsRow::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+.top-album-card {
+  min-width: 200px;
+  max-width: 200px;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+  transform-origin: center center;
+}
+
+.top-album-card:hover {
+  transform: scale(1.03);
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+}
+
+.top-album-card.active {
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+
+/* ========================
+   FLECHAS CARRUSEL
+======================== */
+.carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 2.5rem;
+  color: #E0E0E0;
+  background: rgba(66, 66, 66, 0.95);
+  border: 2px solid rgba(255, 193, 7, 0.3);
+  border-radius: 50%;
+  cursor: pointer;
+  user-select: none;
+  z-index: 25;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  font-weight: bold;
+}
+
+.carousel-arrow:hover {
+  background: rgba(255, 193, 7, 0.9);
+  transform: translateY(-50%) scale(1.15);
+  box-shadow: 0 6px 16px rgba(255, 193, 7, 0.4);
+  color: #424242;
+  border-color: #FFC107;
+}
+
+.carousel-arrow:active {
+  transform: translateY(-50%) scale(1.05);
+}
+
+#arrowLeft {
+  left: 15px;
+}
+
+#arrowRight {
+  right: 15px;
+}
+
+/* ========================
+   DETALLES DEL ÁLBUM
+======================== */
+#albumDetailContainer {
+  background-color: #525252;
+  color: #E0E0E0;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  border: 1px solid #616161;
+}
+
+#albumCover {
+  max-height: 300px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+/* ⭐⭐⭐ SISTEMA DE ESTRELLAS SELECCIONABLES ⭐⭐⭐ */
+.star-rating {
+  display: flex;
+  gap: 5px;
+  font-size: 2.2rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.star-rating span {
+  color: #616161;
+  transition: color 0.2s ease;
+}
+
+.star-rating span.hovered,
+.star-rating span.selected {
+  color: #FFC107;
+}
+
+textarea#reviewText {
+  resize: vertical;
+}
+
+/* ========================
+   SCROLLBARS
+======================== */
+#topAlbumsRow::-webkit-scrollbar {
+  display: none;
+}
+#topAlbumsRow {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ========================
+   RESPONSIVE
+======================== */
+@media (max-width: 768px) {
+  .top-album-card {
+    min-width: 140px;
+    max-width: 140px;
+  }
+
+  #albumsRow .card-img-top {
+    height: 150px;
+  }
+
+  #albumCover {
+    max-height: 200px;
+  }
+
+  .star-rating {
+    font-size: 1.7rem;
+  }
+
+  #topAlbumsRow {
+    height: 200px;
+    padding: 0 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .top-album-card {
+    min-width: 120px;
+    max-width: 120px;
+  }
+
+  .top-album-card img {
+    height: 120px;
+  }
+
+  #topAlbumsRow {
+    gap: 10px;
+    padding: 0 15px;
+    height: 160px;
+  }
+
+  .carousel-arrow {
+    font-size: 1.5rem;
+  }
+
+  .star-rating {
+    font-size: 1.4rem;
+  }
+}
+/* ========================
+    PERFIL DE USUARIO (NUEVO BLOQUE)
+======================== */
+#profileContainer .card {
+    border: none; /* Eliminar borde de la tarjeta principal si es necesario */
+}
+
+/* Estilo para la imagen de perfil para asegurar que sea circular */
+#profilePicture {
+    border: 3px solid #fff; /* Borde blanco para destacar */
+}
+
+/* Estilo específico para el botón de cambio de foto */
+#changePhotoBtn {
+    /* El tamaño ya está manejado en HTML inline, pero reforzamos */
+    width: 32px; 
+    height: 32px;
+    font-size: 0.8rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    /* Asegurar un color que resalte */
+    background-color: #FFC107 !important; 
+    border-color: #FFC107 !important;
+    color: #424242 !important; 
+    
+    /* Pequeña elevación al pasar el mouse */
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+#changePhotoBtn:hover {
+    transform: scale(1.1);
+    background-color: #e0a800 !important;
+    border-color: #e0a800 !important;
+}
+
+/* Ajuste visual para el texto del perfil */
+#profileContainer #profileUsername {
+    font-weight: bold;
+}
+/* ========================
+   PÁGINA DE LOGIN/REGISTRO
+======================== */
+#authContainer {
+  background: linear-gradient(135deg, #001F5B 0%, #424242 100%);
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+}
+
+/* Cuando no está en modo auth, ocultar completamente */
+body:not(.auth-mode) #authContainer {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  z-index: -1 !important;
+  pointer-events: none !important;
+}
+
+#authContainer .container {
+  max-width: 800px !important;
+  width: 100% !important;
+}
+
+#authContainer .col-md-8 {
+  max-width: 100% !important;
+}
+
+#authContainer .col-lg-6 {
+  max-width: 100% !important;
+}
+
+#authContainer .col-xl-5 {
+  max-width: 100% !important;
+}
+
+#authContainer .card {
+  backdrop-filter: blur(10px);
+  background: rgba(82, 82, 82, 0.95);
+  border: 1px solid #616161;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  border-radius: 20px !important;
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  color: #E0E0E0;
+}
+
+#authContainer .card-body {
+  padding: 3rem !important;
+}
+
+#authContainer .nav-pills .nav-link {
+  background: transparent;
+  border: 2px solid #616161;
+  color: #9E9E9E;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+#authContainer .nav-pills .nav-link:hover {
+  background: rgba(255, 193, 7, 0.1);
+  border-color: #FFC107;
+  color: #FFC107;
+}
+
+#authContainer .nav-pills .nav-link.active {
+  background: linear-gradient(135deg, #FFC107 0%, #e0a800 100%);
+  border-color: transparent;
+  color: #424242;
+}
+
+#authContainer .input-group-text {
+  background: #616161;
+  border-right: none;
+  color: #9E9E9E;
+  border-color: #616161;
+}
+
+#authContainer .form-control {
+  border-left: none;
+  padding-left: 0;
+  box-shadow: none;
+  transition: border-color 0.3s ease;
+  background: #525252;
+  color: #E0E0E0;
+  border-color: #616161;
+}
+
+#authContainer .form-control:focus {
+  border-color: #FFC107;
+  box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25);
+  background: #525252;
+  color: #E0E0E0;
+}
+
+#authContainer .btn-primary {
+  background: linear-gradient(135deg, #FFC107 0%, #e0a800 100%);
+  border: none;
+  font-size: 1.1rem;
+  color: #424242;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#authContainer .btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(255, 193, 7, 0.3);
+}
+
+#authContainer .btn-success {
+  background: linear-gradient(135deg, #FFC107 0%, #e0a800 100%);
+  border: none;
+  font-size: 1.1rem;
+  color: #424242;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#authContainer .btn-success:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(255, 193, 7, 0.3);
+}
+
+/* Animaciones para los mensajes */
+#authContainer .alert {
+  animation: slideIn 0.3s ease;
+  border: none;
+  border-radius: 10px;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========================
+   MANEJO DE ERRORES DE IMAGEN
+======================== */
+.image-error {
+  border: 2px dashed #dc3545 !important;
+  opacity: 0.7;
+  filter: grayscale(20%);
+}
+
+.image-loading {
+  opacity: 0.6;
+  filter: blur(1px);
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+.image-success {
+  opacity: 1;
+  filter: none;
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+/* Estilo para imágenes de perfil con estado de carga */
+#profilePicture.loading {
+  opacity: 0.5;
+  filter: blur(2px);
+  transition: all 0.3s ease;
+}
+
+#profilePicture.error {
+  border: 2px solid #dc3545;
+  opacity: 0.8;
+}
+
+#profilePicture.success {
+  opacity: 1;
+  filter: none;
+  border: 3px solid #28a745;
+  transition: all 0.3s ease;
+}
+
+/* Animación sutil para cambios de imagen */
+#profilePicture {
+  transition: opacity 0.3s ease, filter 0.3s ease, border-color 0.3s ease;
+}
+
+/* Estilo para botón de cambio de foto durante upload */
+#changePhotoBtn.uploading {
+  background-color: #6c757d !important;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+#changePhotoBtn.uploading:hover {
+  transform: none;
+  background-color: #6c757d !important;
+}
+
+/* Estilo para notificaciones mejoradas */
+.notification-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  max-width: 350px;
+}
+
+.notification {
+  padding: 12px 20px;
+  border-radius: 8px;
+  color: white;
+  font-weight: bold;
+  margin-bottom: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  transform: translateX(0);
+}
+
+.notification.success {
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+}
+
+.notification.error {
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
+
+.notification.warning {
+  background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+  color: #212529;
+}
+
+.notification.info {
+  background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+}
+
+.notification.hiding {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+/* Responsive para la página de login */
+@media (max-width: 992px) {
+  #authContainer .container {
+    max-width: 700px !important;
+  }
+  
+  #authContainer .card {
+    max-width: 500px;
+  }
+}
+
+@media (max-width: 768px) {
+  #authContainer .display-4 {
+    font-size: 2.5rem;
+  }
+  
+  #authContainer .card-body {
+    padding: 2rem !important;
+  }
+  
+  #authContainer .container {
+    max-width: 600px !important;
+  }
+  
+  #authContainer .card {
+    max-width: 450px;
+  }
+}
+
+@media (max-width: 576px) {
+  #authContainer .display-4 {
+    font-size: 2rem;
+  }
+  
+  #authContainer .card-body {
+    padding: 1.5rem !important;
+  }
+  
+  #authContainer .nav-pills .nav-link {
+    font-size: 0.9rem;
+    padding: 0.5rem 1rem;
+  }
+  
+  #authContainer .container {
+    max-width: 100% !important;
+    padding: 15px;
+  }
+  
+  #authContainer .card {
+    max-width: 100%;
+    margin: 0 10px;
+  }
+}
+/* ========================
+   ELEMENTOS CLICKEABLES
+======================== */
+.card[style*="cursor:pointer"], 
+.card.clickeable,
+[onclick*="renderAlbumDetailsLogic"] {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card[style*="cursor:pointer"]:hover, 
+.card.clickeable:hover,
+[onclick*="renderAlbumDetailsLogic"]:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(255, 193, 7, 0.3) !important;
+}
+
+/* Efecto hover para elementos clickeables del feed */
+[style*="cursor:pointer"]:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s ease;
+}
+
+/* Mejorar la apariencia de las cards clickeables */
+.card[onclick]:hover {
+  box-shadow: 0 6px 12px rgba(255, 193, 7, 0.3) !important;
+}
+/* ========================
+   NAVBAR
+======================== */
+.navbar {
+  background: linear-gradient(135deg, #001F5B 0%, #003d82 100%) !important;
+  border-bottom: 2px solid #FFC107;
+}
+
+.navbar .navbar-brand {
+  color: #E0E0E0 !important;
+  font-weight: bold;
+}
+
+.navbar .navbar-brand:hover {
+  color: #FFC107 !important;
+}
+
+.navbar .nav-link {
+  color: #E0E0E0 !important;
+  transition: color 0.3s ease;
+}
+
+.navbar .nav-link:hover {
+  color: #FFC107 !important;
+}
+
+.navbar .navbar-toggler {
+  border-color: #FFC107;
+}
+
+.navbar .navbar-toggler-icon {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28224, 224, 224, 0.75%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+/* ========================
+   ICONOS SVG
+======================== */
+/* Iconos SVG generales - color gris (excluyendo fotos de perfil) */
+.nav-link img:not(#navbarProfilePicture):not(#profilePicture),
+.btn img:not([src*="logotipo"]),
+.card img:not(.card-img-top):not(.rounded):not(.rounded-circle):not([id*="profile"]):not([src*="logotipo"]) {
+  filter: brightness(0) saturate(100%) invert(62%) sepia(0%) saturate(0%) hue-rotate(180deg) brightness(96%) contrast(89%);
+  transition: all 0.2s ease;
+}
+
+/* Iconos en navbar - color amarillo por defecto (excluyendo fotos de perfil) */
+.navbar .nav-link img:not(#navbarProfilePicture) {
+  filter: brightness(0) saturate(100%) invert(85%) sepia(100%) saturate(348%) hue-rotate(1deg) brightness(101%) contrast(103%);
+  opacity: 0.9;
+}
+
+/* Iconos en navbar al hacer hover - color amarillo (excluyendo fotos de perfil) */
+.navbar .nav-link:hover img:not(#navbarProfilePicture) {
+  filter: brightness(0) saturate(100%) invert(85%) sepia(100%) saturate(348%) hue-rotate(1deg) brightness(101%) contrast(103%);
+  opacity: 1;
+}
+
+/* Fotos de perfil mantienen su apariencia natural */
+#navbarProfilePicture,
+#profilePicture {
+  filter: none !important;
+}
+/* Efectos hover para iconos */
+.nav-link:hover img:not(#navbarProfilePicture):not(#profilePicture) {
+  transform: scale(1.05);
+  filter: brightness(0) saturate(100%) invert(85%) sepia(100%) saturate(348%) hue-rotate(1deg) brightness(101%) contrast(103%);
+}
+
+.btn:hover img:not([src*="logotipo"]) {
+  transform: scale(1.02);
+  filter: brightness(0) saturate(100%) invert(85%) sepia(100%) saturate(348%) hue-rotate(1deg) brightness(101%) contrast(103%);
+}
+
+/* Iconos en botones de peligro */
+.btn-danger img,
+.btn-outline-danger img {
+  filter: brightness(0) invert(1);
+}
+
+.btn-outline-danger:hover img {
+  filter: brightness(0) invert(1);
+}
+
+/* Iconos en botones amarillos */
+.btn-warning img,
+.btn-outline-warning img,
+#changePhotoBtn img {
+  filter: brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%);
+}
+
+/* Icono de búsqueda amarillo */
+.input-group-text img[src*="icono_busqueda"] {
+  filter: brightness(0) saturate(100%) invert(85%) sepia(100%) saturate(348%) hue-rotate(1deg) brightness(101%) contrast(103%);
+}
+
+/* Animación de carga */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Ajustes para iconos medianos */
+.input-group-text {
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-tabs .nav-link {
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.card-title img {
+  vertical-align: middle;
+}
+
+/* Ajustes específicos para el botón de cambio de foto */
+#changePhotoBtn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Ajustes para navbar con iconos medianos */
+.navbar-nav .nav-link {
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+}
+
+.navbar-brand {
+  padding: 0.5rem 0;
+}
+
+/* Botón de logout más pequeño */
+#logoutBtn {
+  font-size: 0.875rem;
+}
+
+#logoutBtn img {
+  width: 24px !important;
+  height: 24px !important;
+}
+
+/* Reducir el efecto hover para iconos grandes */
+.nav-link:hover img {
+  transform: scale(1.05);
+}
+
+.btn:hover img {
+  transform: scale(1.02);
+}
+
+/* ========================
+   TEMA OSCURO ADICIONAL
+======================== */
+/* Bootstrap overrides para tema oscuro */
+.card {
+  background-color: #525252 !important;
+  border-color: #616161 !important;
+  color: #E0E0E0 !important;
+}
+
+.card-body {
+  color: #E0E0E0 !important;
+}
+
+.card-title {
+  color: #E0E0E0 !important;
+}
+
+.text-muted {
+  color: #9E9E9E !important;
+}
+
+.text-warning {
+  color: #FFC107 !important;
+}
+
+.btn-primary {
+  background-color: #FFC107 !important;
+  border-color: #FFC107 !important;
+  color: #424242 !important;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background-color: #e0a800 !important;
+  border-color: #e0a800 !important;
+  color: #424242 !important;
+}
+
+.btn-secondary {
+  background-color: #616161 !important;
+  border-color: #616161 !important;
+  color: #E0E0E0 !important;
+}
+
+.btn-secondary:hover {
+  background-color: #757575 !important;
+  border-color: #757575 !important;
+  color: #E0E0E0 !important;
+}
+
+.form-control {
+  background-color: #525252 !important;
+  border-color: #616161 !important;
+  color: #E0E0E0 !important;
+}
+
+.form-control:focus {
+  background-color: #525252 !important;
+  border-color: #FFC107 !important;
+  color: #E0E0E0 !important;
+  box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25) !important;
+}
+
+.form-control::placeholder {
+  color: #9E9E9E !important;
+}
+
+.input-group-text {
+  background-color: #616161 !important;
+  border-color: #616161 !important;
+  color: #9E9E9E !important;
+}
+
+/* Alertas */
+.alert-warning {
+  background-color: rgba(255, 193, 7, 0.2) !important;
+  border-color: #FFC107 !important;
+  color: #FFC107 !important;
+}
+
+.alert-danger {
+  background-color: rgba(220, 53, 69, 0.2) !important;
+  border-color: #dc3545 !important;
+  color: #f8d7da !important;
+}
+
+.alert-success {
+  background-color: rgba(40, 167, 69, 0.2) !important;
+  border-color: #28a745 !important;
+  color: #d4edda !important;
+}
+
+/* Modales */
+.modal-content {
+  background-color: #525252 !important;
+  border-color: #616161 !important;
+  color: #E0E0E0 !important;
+}
+
+.modal-header {
+  border-bottom-color: #616161 !important;
+}
+
+.modal-footer {
+  border-top-color: #616161 !important;
+}
+
+.close {
+  color: #E0E0E0 !important;
+}
+
+/* Dropdowns */
+.dropdown-menu {
+  background-color: #525252 !important;
+  border-color: #616161 !important;
+}
+
+.dropdown-item {
+  color: #E0E0E0 !important;
+}
+
+.dropdown-item:hover {
+  background-color: #616161 !important;
+  color: #FFC107 !important;
+}
+
+/* Tablas */
+.table {
+  color: #E0E0E0 !important;
+}
+
+.table-dark {
+  background-color: #525252 !important;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+  background-color: rgba(97, 97, 97, 0.3) !important;
+}
+
+/* Badges */
+.badge {
+  background-color: #FFC107 !important;
+  color: #424242 !important;
+}
+
+/* Links */
+a {
+  color: #FFC107 !important;
+}
+
+a:hover {
+  color: #e0a800 !important;
+}
+
+/* Texto general */
+h1, h2, h3, h4, h5, h6 {
+  color: #E0E0E0 !important;
+}
+
+p {
+  color: #E0E0E0 !important;
+}
+
+small {
+  color: #9E9E9E !important;
+}
+
+/* Sombras mejoradas para tema oscuro */
+.shadow-sm {
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.4) !important;
+}
+
+.shadow {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.4) !important;
+}
+
+.shadow-lg {
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.5) !important;
+}
+/* ========================
+   AJUSTES ESPECÍFICOS DE ICONOS
+======================== */
+/* Icono de administrador en el título */
+h1 img[src*="icono_administrador"] {
+  filter: brightness(0) saturate(100%) invert(88%) sepia(0%) saturate(0%) hue-rotate(180deg) brightness(96%) contrast(89%) !important;
+}
+
+/* Iconos en botones de warning/amarillo */
+.btn-warning img {
+  filter: brightness(0) saturate(100%) invert(27%) sepia(51%) saturate(2878%) hue-rotate(346deg) brightness(104%) contrast(97%) !important;
+}
+
+/* Botones de volver - color gris claro */
+.btn-secondary img,
+.btn-outline-secondary img,
+button[onclick*="showApp"] img,
+button[onclick*="goBack"] img {
+  filter: brightness(0) saturate(100%) invert(88%) sepia(0%) saturate(0%) hue-rotate(180deg) brightness(96%) contrast(89%) !important;
+}
+
+/* Texto en reseñas - color gris oscuro para mejor contraste */
+.review-text,
+.comment-text,
+textarea#reviewText,
+.review-comment {
+  color: #424242 !important;
+  background-color: #E0E0E0 !important;
+}
+
+/* Ajustes para centrar navbar brand */
+.navbar .container-fluid {
+  position: relative;
+}
+
+.navbar .navbar-brand.mx-auto {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.navbar .navbar-nav.ms-auto {
+  margin-left: auto !important;
+}
+
+/* Mejorar el centrado en móviles */
+@media (max-width: 768px) {
+  .navbar .navbar-brand.mx-auto {
+    position: static;
+    transform: none;
+    margin: 0 auto;
+  }
+}
+/* ========================
+   PÁGINA DE ÁLBUM - TEXTO NEGRO
+======================== */
+/* Nombre del álbum en negro */
+#albumDetailContainer h2,
+#albumDetailContainer .album-title {
+  color: #000000 !important;
+}
+
+/* Palabra "Reseñas" en negro */
+#albumDetailContainer h3:contains("Reseñas"),
+#albumDetailContainer .reviews-title {
+  color: #000000 !important;
+}
+
+/* Nombres de usuarios en las reseñas en negro */
+#albumDetailContainer .review-username,
+#albumDetailContainer strong {
+  color: #000000 !important;
+}
+
+/* Selector más específico para nombres de usuarios */
+#reviewsContainer strong,
+#reviewsContainer .username,
+.review-item strong,
+.review-item .username {
+  color: #000000 !important;
+}
+
+/* Asegurar que los títulos de álbum sean negros */
+#albumTitle {
+  color: #000000 !important;
+}
+
+/* Títulos de secciones de reseñas */
+h3:contains("Reseñas") {
+  color: #000000 !important;
+}
+/* ========================
+   FUENTES PERSONALIZADAS
+======================== */
+
+/* Fuente Honk para el título MusicBoxd en login */
+#authContainer h1,
+.musicboxd-title {
+  font-family: "Honk", system-ui !important;
+  color: #E0E0E0 !important;
+  font-weight: 400;
+}
+
+/* Fuente Jersey 10 específicamente para navbar */
+.navbar .navbar-brand {
+  font-family: "Jersey 10", sans-serif !important;
+  color: #E0E0E0 !important;
+  font-weight: 700 !important;
+}
+
+/* Fuente Jersey 15 para títulos */
+h1, h2, h3, h4, h5, h6,
+.card-title,
+.nav-link,
+.btn,
+#albumTitle,
+.reviews-title,
+.review-username,
+.navbar .nav-link,
+.album-title,
+.username,
+strong {
+  font-family: "Jersey 15", cursive !important;
+}
+
+/* Fuente Josefin Sans para texto general (ya aplicada en body) */
+p, span, small, .text-muted, .form-control, .form-label, 
+textarea, input, .alert, .card-text, .list-group-item {
+  font-family: "Josefin Sans", sans-serif !important;
+}
+
+/* Ajustes específicos para mejorar legibilidad */
+.navbar .navbar-brand {
+  font-family: "Jersey 10", sans-serif !important;
+  font-size: 2.5rem !important;
+  font-weight: 700 !important;
+}
+
+#authContainer h1 {
+  font-size: 3.5rem !important;
+  font-weight: 400 !important;
+}
+
+/* Títulos con Jersey 15 */
+h1 { font-size: 2.5rem !important; }
+h2 { font-size: 2rem !important; }
+h3 { font-size: 1.75rem !important; }
+h4 { font-size: 1.5rem !important; }
+h5 { font-size: 1.25rem !important; }
+h6 { font-size: 1rem !important; }
+
+/* Asegurar que los nombres de usuario en reseñas usen Jersey 15 */
+.review-username,
+#reviewsContainer strong,
+.card-text strong {
+  font-family: "Jersey 15", cursive !important;
+  color: #000000 !important;
+}
+
+/* Botones con Jersey 15 */
+.btn {
+  font-family: "Jersey 15", cursive !important;
+  font-weight: 400 !important;
+}
+
+/* Nav links con Jersey 15 */
+.nav-link {
+  font-family: "Jersey 15", cursive !important;
+  font-weight: 400 !important;
+}
+/* ========================
+   TAMAÑOS DE FUENTE MEJORADOS
+======================== */
+/* Aumentar tamaños generales para mejor legibilidad */
+h1 { font-size: 2.8rem; }
+h2 { font-size: 2.4rem; }
+h3 { font-size: 2rem; }
+h4 { font-size: 1.8rem; }
+h5 { font-size: 1.5rem; }
+h6 { font-size: 1.3rem; }
+
+p { font-size: 1.1rem; }
+.card-text { font-size: 1.1rem; }
+.card-title { font-size: 1.3rem; }
+.nav-link { font-size: 1.1rem; }
+.btn { font-size: 1.1rem; }
+.form-control { font-size: 1.1rem; }
+.input-group-text { font-size: 1.1rem; }
+
+/* Tamaños específicos para elementos pequeños */
+small { font-size: 1rem; }
+.small { font-size: 1rem; }
+.text-muted { font-size: 1rem; }
+
+/* Ajustes para cards */
+.card-body h5 { font-size: 1.4rem; }
+.card-body h6 { font-size: 1.2rem; }
+.card-body p { font-size: 1.1rem; }
+.card-body small { font-size: 1rem; }
+/* ========================
+   AJUSTES ESPECÍFICOS PARA JERSEY 10
+======================== */
+/* Jersey 10 necesita ajustes específicos para legibilidad */
+body {
+  font-weight: 400;
+  letter-spacing: 0.5px;
+}
+
+/* Mejorar legibilidad en elementos específicos */
+.navbar-brand {
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.card-title {
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.btn {
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+/* Ajustes para el carousel */
+.top-album-card .card-title {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.top-album-card small {
+  font-size: 0.9rem;
+}
+
+/* Ajustes para formularios */
+.form-label {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+/* Ajustes para alertas */
+.alert {
+  font-size: 1.1rem;
+}
+
+/* Mejorar contraste en texto muted */
+.text-muted {
+  color: #B0B0B0 !important;
+}
+/* ========================
+   AJUSTES ESPECÍFICOS NAVBAR
+======================== */
+/* Navbar con título Jersey 10 */
+.navbar .main-title {
+  font-family: "Jersey 10", sans-serif !important;
+  font-size: 2.5rem !important;
+  font-weight: 700 !important;
+}
+
+/* Ajuste para el título en login */
+#authContainer .main-title {
+  font-size: 4rem !important;
+}
+
+/* Responsive para títulos */
+@media (max-width: 768px) {
+  .navbar .main-title {
+    font-size: 2rem !important;
+  }
+  
+  #authContainer .main-title {
+    font-size: 3rem !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .navbar .main-title {
+    font-size: 1.8rem !important;
+  }
+  
+  #authContainer .main-title {
+    font-size: 2.5rem !important;
+  }
+}

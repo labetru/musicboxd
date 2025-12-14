@@ -1,0 +1,2187 @@
+// --- CONFIGURACIÓN Y VARIABLES GLOBALES ---
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:3000'
+  : window.location.origin;
+
+// --- VARIABLES Y ESTADO GLOBAL ---
+const profileContainer = document.getElementById('profileContainer');
+const profileLink = document.getElementById('profileLink');
+const profileUsername = document.getElementById('profileUsername');
+const totalReviewsEl = document.getElementById('totalReviews');
+const avgStarsEl = document.getElementById('avgStars');
+const topReviewsContainer = document.getElementById('topReviewsContainer');
+const noTopReviewsMessage = document.getElementById('noTopReviewsMessage');
+const userDisplayEl = document.getElementById('userDisplay');
+const profilePictureEl = document.getElementById('profilePicture');
+const photoFileInput = document.getElementById('photoFileInput');
+const changePhotoBtn = document.getElementById('changePhotoBtn');
+let currentUserId = null; 
+let currentUsername = null; 
+
+// ========================
+// VERIFICAR SESIÓN AL CARGAR
+// ========================
+async function checkSession() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/me`, { credentials: "include" });
+    
+    // Enhanced error handling for network issues
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        // Unauthorized - clear session
+        console.log('Session expired or unauthorized');
+        clearSessionState();
+        showAuth();
+        return;
+      } else {
+        // Other server errors - retry logic could be added here
+        throw new Error(`Server error: ${res.status} ${res.statusText}`);
+      }
+    }
+    
+    const data = await res.json();
+    if (data.loggedIn) {
+        currentUserId = data.userId;
+        currentUsername = data.username;
+        if (userDisplayEl) userDisplayEl.textContent = data.username;
+        
+        // Enhanced profile picture loading with better persistence handling
+        const profilePictureUrl = data.profilePictureUrl || data.profile_pic_url;
+        
+        // Update navbar profile picture
+        updateNavbarProfilePicture(profilePictureUrl);
+        if (profilePictureUrl && profilePictureEl) {
+            console.log('Loading profile picture from checkSession:', profilePictureUrl);
+            console.log('Data sync info:', data.dataSync);
+            
+            // Use enhanced validation that handles server issues gracefully
+            try {
+              await loadProfilePictureWithEnhancedValidation(profilePictureUrl, data.userId);
+            } catch (imageError) {
+              console.warn('Profile picture loading failed, using placeholder:', imageError);
+              profilePictureEl.src = getProfileImageUrl(null, '100');
+            }
+        } else if (profilePictureEl) {
+            // Asegurar que se muestre placeholder si no hay foto
+            console.log('No hay foto de perfil, mostrando placeholder');
+            profilePictureEl.src = getProfileImageUrl(null, '100');
+        }
+        
+        // Mostrar botón de admin si es administrador
+        showAdminButton(data.role === 'admin');
+        
+        showApp();
+    } else {
+        // Limpiar estado cuando no hay sesión válida
+        clearSessionState();
+        showAuth();
+    }
+  } catch (err) {
+    console.error("Error al verificar sesión:", err);
+    
+    // Enhanced error handling - don't immediately clear session on network errors
+    if (err.name === 'TypeError' && err.message.includes('fetch')) {
+      console.warn('Network error during session check - server may be down');
+      // Keep current session state if it exists, just show a warning
+      if (!currentUserId) {
+        clearSessionState();
+        showAuth();
+      }
+      // Could show a network error indicator here
+    } else {
+      // Other errors - clear session
+      clearSessionState();
+      showAuth();
+    }
+  }
+}
+
+// Helper function to clear session state consistently
+function clearSessionState() {
+  currentUserId = null;
+  currentUsername = null;
+  if (userDisplayEl) userDisplayEl.textContent = 'Usuario';
+  if (profilePictureEl) {
+    profilePictureEl.src = getProfileImageUrl(null, '100');
+  }
+  // Clear navbar profile picture
+  updateNavbarProfilePicture(null);
+}
+
+// Function to update navbar profile picture
+function updateNavbarProfilePicture(imageUrl) {
+  const navbarProfilePicture = document.getElementById('navbarProfilePicture');
+  if (!navbarProfilePicture) return;
+  
+  if (imageUrl) {
+    // Use the same enhanced cache busting as the main profile picture
+    const cacheBustUrl = generateEnhancedCacheBustUrl(imageUrl);
+    navbarProfilePicture.src = cacheBustUrl;
+  } else {
+    // Use placeholder
+    navbarProfilePicture.src = '/icons/icono_ftperfil_predeterminado.svg';
+  }
+}
+
+// La inicialización se moverá al final del archivo
+
+// ========================
+// MOSTRAR / OCULTAR PANELES
+// ========================
+function showAuth() {
+  console.log("Mostrando página de login");
+  
+  // Agregar clase para prevenir scroll y ocultar contenido
+  document.body.classList.add('auth-mode');
+  document.documentElement.classList.add('auth-mode');
+  
+  // Forzar estilos directamente
+  document.body.style.overflow = 'hidden';
+  document.body.style.height = '100vh';
+  document.body.style.position = 'fixed';
+  document.body.style.width = '100vw';
+  document.body.style.top = '0';
+  document.body.style.left = '0';
+  
+  // Mostrar auth container con todos los estilos necesarios
+  const authContainer = document.getElementById("authContainer");
+  authContainer.style.display = "flex";
+  authContainer.style.visibility = "visible";
+  authContainer.style.opacity = "1";
+  authContainer.style.zIndex = "9999";
+  
+  // Ocultar todos los elementos de la aplicación
+  document.getElementById("navbar").style.display = "none";
+  document.getElementById("searchContainer").style.display = "none";
+  document.getElementById("albumFeed").style.display = "none";
+  document.getElementById("albumDetailContainer").style.display = "none";
+  if (profileContainer) profileContainer.style.display = "none";
+  
+  // Limpiar campos de login para una experiencia fresca
+  const loginUsername = document.getElementById("loginUsername");
+  const loginPassword = document.getElementById("loginPassword");
+  const messageDiv = document.getElementById("message");
+  
+  if (loginUsername) loginUsername.value = '';
+  if (loginPassword) loginPassword.value = '';
+  if (messageDiv) messageDiv.innerHTML = '';
+  
+  console.log("Login page displayed successfully");
+}
+
+// Función más robusta para forzar el regreso al login
+function forceShowAuth() {
+  console.log("Forzando regreso a login...");
+  
+  // Intentar showAuth normal primero
+  try {
+    showAuth();
+    
+    // Verificar que se aplicó correctamente
+    setTimeout(() => {
+      const authContainer = document.getElementById("authContainer");
+      const isVisible = authContainer && 
+                       authContainer.style.display === "flex" && 
+                       authContainer.style.visibility !== "hidden";
+      
+      if (!isVisible) {
+        console.log("showAuth falló, forzando recarga...");
+        // Si no funcionó, recargar la página como último recurso
+        window.location.reload();
+      } else {
+        console.log("Login mostrado correctamente");
+      }
+    }, 200);
+    
+  } catch (error) {
+    console.error("Error en showAuth, recargando página:", error);
+    window.location.reload();
+  }
+}
+
+// Funciones globales necesarias para el HTML
+window.showAuth = showAuth;
+window.forceShowAuth = forceShowAuth;
+
+function showApp() {
+  // Quitar clase auth-mode para permitir scroll normal
+  document.body.classList.remove('auth-mode');
+  document.documentElement.classList.remove('auth-mode');
+  
+  // Restaurar estilos normales del body
+  document.body.style.overflow = '';
+  document.body.style.height = '';
+  document.body.style.position = '';
+  document.body.style.width = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
+  
+  // Ocultar auth container completamente
+  const authContainer = document.getElementById("authContainer");
+  authContainer.style.display = "none";
+  authContainer.style.visibility = "hidden";
+  authContainer.style.opacity = "0";
+  authContainer.style.zIndex = "-1";
+  
+  // Mostrar elementos de la aplicación
+  document.getElementById("navbar").style.display = "block";
+  document.getElementById("searchContainer").style.display = "block";
+  document.getElementById("albumDetailContainer").style.display = "none";
+  if (profileContainer) profileContainer.style.display = "none";
+  
+  const welcome = document.getElementById("welcomeMessage");
+  if (welcome) welcome.style.display = "block";
+  
+  const albumFeed = document.getElementById("albumFeed");
+  albumFeed.style.display = "block";
+  
+  // Crear secciones dinámicas si no existen
+  if (!document.getElementById("mostReviewedAlbumsSection")) {
+    albumFeed.insertAdjacentHTML('beforeend', `
+      <div id="mostReviewedAlbumsSection" style="margin-top: 220px;">
+          <h3>Álbumes con Más Reseñas</h3>
+          <div class="row mt-3" id="mostReviewedAlbumsRow"></div>
+      </div>
+    `);
+  }
+  
+  if (!document.getElementById("randomReviewsSection")) {
+    albumFeed.insertAdjacentHTML('beforeend', `
+      <div id="randomReviewsSection" class="mt-5">
+          <h3>Reseñas Destacadas (4-5 Estrellas)</h3>
+          <div class="row mt-3" id="randomReviewsRow"></div>
+      </div>
+    `);
+  }
+  
+  // Cargar contenido
+  const query = document.getElementById("searchInput").value.trim();
+  if (query.length === 0) {
+    renderTopAlbums();
+    renderMostReviewedAlbums(); 
+    renderRandomHighStarReviews();
+    document.getElementById("topAlbumsContainer").style.display = "block";
+    document.getElementById("mostReviewedAlbumsSection").style.display = "block";
+    document.getElementById("randomReviewsSection").style.display = "block";
+  } else {
+    document.getElementById("topAlbumsContainer").style.display = "none";
+    document.getElementById("mostReviewedAlbumsSection").style.display = "none"; 
+    document.getElementById("randomReviewsSection").style.display = "none";
+  }
+}
+
+// ========================
+// REGISTRO - Movido a DOMContentLoaded
+// ========================
+
+// ========================
+// LOGIN - Movido a DOMContentLoaded
+// ========================
+
+// ========================
+// LOGOUT - Movido a DOMContentLoaded
+// ========================
+
+// ========================
+// FUNCIONES AUXILIARES
+// ========================
+function createStars(rating) {
+  return "★".repeat(rating) + "☆".repeat(5 - rating);
+}
+
+function showAdminButton(isAdmin) {
+  let adminBtn = document.getElementById('adminBtn');
+  
+  if (isAdmin) {
+    if (!adminBtn) {
+      const navbarNav = document.querySelector('#navbarNav .navbar-nav');
+      const profileItem = document.querySelector('#profileLink').parentElement;
+      
+      const adminItem = document.createElement('li');
+      adminItem.className = 'nav-item';
+      adminItem.innerHTML = `
+        <a id="adminBtn" class="nav-link" href="/admin.html" title="Panel de Administración" style="cursor: pointer;">
+          <img src="/icons/icono_administrador.svg" alt="Admin" class="me-2" style="width: 40px; height: 40px;">
+          Admin
+        </a>
+      `;
+      
+      navbarNav.insertBefore(adminItem, profileItem);
+    }
+  } else {
+    if (adminBtn) {
+      adminBtn.parentElement.remove();
+    }
+  }
+}
+
+// ========================
+// RENDERIZADO DE CONTENIDO
+// ========================
+async function renderTopAlbums() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/albums/top`, { credentials: "include" });
+    const albums = await res.json();
+    
+    const container = document.getElementById("topAlbumsRow");
+    if (!container) return;
+    
+    if (albums.length === 0) {
+      container.innerHTML = '<div class="col-12 text-center text-muted"><em>No hay álbumes con reseñas aún</em></div>';
+      return;
+    }
+    
+    container.innerHTML = "";
+    albums.slice(0, 20).forEach(album => {
+      if (album && album.images && album.images.length > 0) {
+        const div = document.createElement("div");
+        div.className = "top-album-card";
+        div.style.cssText = "min-width: 200px; max-width: 200px; flex-shrink: 0; cursor: pointer;";
+        div.innerHTML = `
+          <div class="card h-100" style="cursor:pointer;" onclick="window.renderAlbumDetailsLogic('${album.id}')">
+            <img src="${album.images[0].url}" class="card-img-top" style="aspect-ratio:1/1; object-fit:cover;">
+            <div class="card-body p-2">
+              <h6 class="card-title text-truncate" style="font-size:1.1rem; font-weight: 600;">${album.name}</h6>
+              <small class="text-muted text-truncate d-block">${album.artists[0].name}</small>
+              <small class="text-warning">${createStars(Math.round(album.avgStars || 0))} (${album.reviewCount || 0})</small>
+            </div>
+          </div>
+        `;
+        container.appendChild(div);
+      }
+    });
+    
+    // Actualizar flechas del carousel después de cargar los álbumes
+    setTimeout(() => {
+        updateCarouselArrows();
+        // Asegurar que las flechas estén visibles inicialmente si hay contenido
+        const arrowLeft = document.getElementById("arrowLeft");
+        const arrowRight = document.getElementById("arrowRight");
+        if (arrowLeft && arrowRight && albums.length > 4) {
+            arrowLeft.style.opacity = '0.5'; // Inicialmente deshabilitada
+            arrowRight.style.opacity = '1';   // Inicialmente habilitada
+        }
+    }, 200);
+  } catch (err) {
+    console.error("Error cargando top albums:", err);
+  }
+}
+
+async function renderMostReviewedAlbums() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/albums/top`, { credentials: "include" });
+    const albums = await res.json();
+    
+    const row = document.getElementById("mostReviewedAlbumsRow");
+    if (!row) return;
+    
+    if (albums.length === 0) {
+      row.innerHTML = '<div class="col-12 text-center text-muted"><em>No hay álbumes con reseñas aún</em></div>';
+      return;
+    }
+    
+    row.innerHTML = "";
+    albums.slice(0, 8).forEach(album => {
+      if (album && album.images && album.images.length > 0) {
+        const col = document.createElement("div");
+        col.className = "col-md-3 col-sm-6 mb-4";
+        col.innerHTML = `
+          <div class="card shadow-sm h-100" style="cursor:pointer;" onclick="window.renderAlbumDetailsLogic('${album.id}')">
+            <img src="${album.images[0].url}" class="card-img-top" style="aspect-ratio:1/1; object-fit:cover;">
+            <div class="card-body">
+              <h5 class="card-title text-truncate" style="font-size:1.4rem; font-weight: 600;">${album.name}</h5>
+              <p class="text-muted text-truncate">${album.artists[0].name}</p>
+              <small class="text-warning">${createStars(Math.round(album.avgStars || 0))} (${album.reviewCount || 0})</small>
+            </div>
+          </div>
+        `;
+        row.appendChild(col);
+      }
+    });
+  } catch (err) {
+    console.error("Error cargando most reviewed albums:", err);
+  }
+}
+
+async function renderRandomHighStarReviews() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/reviews/random`, { credentials: "include" });
+    const reviews = await res.json();
+    
+    const row = document.getElementById("randomReviewsRow");
+    if (!row) return;
+    
+    if (reviews.length === 0) {
+      row.innerHTML = '<div class="col-12 text-center text-muted"><em>No hay reseñas aún</em></div>';
+      return;
+    }
+    
+    row.innerHTML = "";
+    const highStarReviews = reviews.filter(r => r.stars >= 4).slice(0, 8);
+    
+    if (highStarReviews.length === 0) {
+      row.innerHTML = '<div class="col-12 text-center text-muted"><em>No hay reseñas de 4+ estrellas aún</em></div>';
+      return;
+    }
+    
+    highStarReviews.forEach(review => {
+      const profileSrc = getProfileImageUrl(review.profile_pic_url, '30');
+      
+      const col = document.createElement("div");
+      col.className = "col-md-3 col-sm-6 mb-4";
+      col.style.cursor = "pointer";
+      col.onclick = () => window.renderAlbumDetailsLogic(review.spotifyId);
+      col.innerHTML = `
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <div class="d-flex align-items-start mb-2">
+              <img src="${review.albumCoverUrl}" class="rounded me-3" style="width: 50px; height: 50px; object-fit: cover;">
+              <div>
+                <h6 class="card-title m-0 text-truncate" style="font-size:0.9rem;">${review.albumName}</h6>
+                <small class="text-muted d-block text-truncate">${review.artistName}</small>
+              </div>
+            </div>
+            <div class="d-flex align-items-center mb-2">
+              <img src="${profileSrc}" class="rounded-circle me-2" style="width: 30px; height: 30px; object-fit: cover;" onerror="handleImageError(this, '30')">
+              <p class="card-text m-0 small">Por <strong style="color: #E0E0E0;">${review.username}</strong></p>
+            </div>
+            <p class="card-text text-warning">${createStars(review.stars)}</p>
+            <p class="small" style="color: #E0E0E0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${review.comment}</p>
+          </div>
+        </div>
+      `;
+      row.appendChild(col);
+    });
+  } catch (err) {
+    console.error("Error cargando random reviews:", err);
+  }
+}
+
+// ========================
+// BÚSQUEDA - Movido a DOMContentLoaded
+// ========================
+
+async function renderAlbums(albums) {
+  const row = document.getElementById("albumsRow");
+  if (!row) return;
+  row.innerHTML = "";
+  
+  for (const album of albums) {
+    const img = album.images[0]?.url || "";
+    const spotify_id = album.id;
+    let starsAvg = 0, reviewCount = 0;
+    
+    try {
+      const resReviews = await fetch(`${API_BASE_URL}/reviews/album/${spotify_id}`, { credentials: "include" });
+      const reviews = await resReviews.json();
+      reviewCount = reviews.length;
+      if (reviewCount > 0) starsAvg = Math.round(reviews.reduce((a,b)=>a+b.stars,0)/reviewCount);
+    } catch (e){}
+    
+    const col = document.createElement("div");
+    col.className = "col-md-3 col-sm-6 mb-4";
+    col.innerHTML = `
+      <div class="card shadow-sm h-100" onclick="window.renderAlbumDetailsLogic('${spotify_id}')" style="cursor:pointer;">
+        <img src="${img}" class="card-img-top" style="aspect-ratio:1/1; object-fit:cover;">
+        <div class="card-body">
+          <h5 class="card-title text-truncate" style="font-size:1.4rem; font-weight: 600;">${album.name}</h5>
+          <p class="text-muted text-truncate">${album.artists[0].name}</p>
+          <small>${createStars(starsAvg)} (${reviewCount})</small>
+        </div>
+      </div>`;
+    row.appendChild(col);
+  }
+}
+
+// ========================
+// PERFIL DE USUARIO
+// ========================
+async function showProfile() {
+    if (!currentUserId) { 
+        await checkSession();
+        if (!currentUserId) {
+            showAuth(); 
+            return;
+        }
+    }
+    
+    if (!profileContainer) {
+         showApp(); 
+         return;
+    }
+    
+    document.getElementById("authContainer").style.display = "none";
+    document.getElementById("navbar").style.display = "block";
+    document.getElementById("searchContainer").style.display = "none";
+    document.getElementById("albumFeed").style.display = "none";
+    document.getElementById("albumDetailContainer").style.display = "none";
+    profileContainer.style.display = "block";
+    
+    loadUserProfile(currentUserId);
+}
+
+async function loadUserProfile(userId) {
+    if (profileUsername) profileUsername.textContent = "Cargando perfil...";
+    if (totalReviewsEl) totalReviewsEl.textContent = "0";
+    if (avgStarsEl) avgStarsEl.textContent = "0.0";
+    if (topReviewsContainer) topReviewsContainer.innerHTML = '';
+    if (noTopReviewsMessage) noTopReviewsMessage.style.display = 'none';
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/user/profile/${userId}`, { credentials: "include" });
+        
+        if (response.status === 401 || response.status === 403) {
+            await checkSession();
+            return;
+        }
+        
+        if (!response.ok) {
+            throw new Error(`Error al cargar el perfil: Estado ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Datos del perfil recibidos:', data);
+        
+        if (profileUsername) profileUsername.textContent = data.username || 'Usuario Desconocido';
+        if (totalReviewsEl) totalReviewsEl.textContent = data.totalReviews;
+        if (avgStarsEl) avgStarsEl.textContent = parseFloat(data.avgStars).toFixed(1);
+        
+        // Enhanced profile picture loading with improved error handling and validation
+        if (profilePictureEl) {
+            const profilePictureUrl = data.profilePictureUrl || data.profile_pic_url;
+            await loadProfilePictureWithEnhancedValidation(profilePictureUrl, userId);
+        }
+        
+        if (data.topReviews && data.topReviews.length > 0 && topReviewsContainer) {
+            let reviewsHTML = '';
+            data.topReviews.forEach(review => {
+                const stars = createStars(review.stars);
+                reviewsHTML += `
+                    <li class="list-group-item d-flex align-items-center mb-2 p-3 border rounded shadow-sm">
+                        <img src="${review.albumCoverUrl}" 
+                            alt="${review.albumName}" 
+                            class="rounded me-3" 
+                            style="width: 60px; height: 60px; object-fit: cover;">
+                        <div>
+                            <h6 class="mb-0 text-primary">${review.albumName} - ${review.artistName}</h6>
+                            <p class="mb-1 text-warning">${stars} <span class="text-muted small">(${review.stars}/5)</span></p>
+                            <p class="mb-0 small fst-italic text-break">"${review.comment}"</p>
+                        </div>
+                    </li>
+                `;
+            });
+            topReviewsContainer.innerHTML = `<ul class="list-unstyled">${reviewsHTML}</ul>`;
+        } else if (noTopReviewsMessage) {
+            noTopReviewsMessage.style.display = 'block';
+        }
+    } catch (error) {
+        console.error("Error FATAL al cargar perfil o problema de red:", error);
+        await checkSession();
+        if (profileUsername) profileUsername.textContent = "Error al cargar los datos. Intente recargar.";
+    }
+}
+
+// ========================
+// EVENT LISTENERS
+// ========================
+document.addEventListener("DOMContentLoaded", () => {
+    // Event listeners para perfil
+    if (profileLink) {
+        profileLink.addEventListener('click', async(e) => {
+            e.preventDefault();
+            await showProfile();
+        });
+    }
+    
+    if (changePhotoBtn && photoFileInput) {
+        changePhotoBtn.addEventListener('click', () => {
+            photoFileInput.click();
+        });
+        
+        photoFileInput.addEventListener('change', uploadProfilePicture);
+    }
+
+    // Event listeners para login y registro
+    const loginBtn = document.getElementById("loginBtn");
+    const registerBtn = document.getElementById("registerBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    if (loginBtn) {
+        loginBtn.addEventListener("click", async () => {
+            const username = document.getElementById("loginUsername").value.trim();
+            const password = document.getElementById("loginPassword").value;
+            if (!username || !password) {
+                const messageDiv = document.getElementById("message");
+                messageDiv.innerHTML = '<div class="alert alert-warning">⚠️ Por favor ingresa usuario y contraseña</div>';
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    currentUserId = data.userId;
+                    currentUsername = data.username;
+                    if (userDisplayEl) userDisplayEl.textContent = data.username;
+                    
+                    // Update navbar profile picture and load profile picture with enhanced validation
+                    const profilePictureUrl = data.profilePictureUrl || data.profile_pic_url;
+                    updateNavbarProfilePicture(profilePictureUrl);
+                    
+                    if (profilePictureUrl && profilePictureEl) {
+                        await loadProfilePictureWithEnhancedValidation(profilePictureUrl, data.userId);
+                    }
+                    
+                    // Mostrar botón de admin si es administrador
+                    showAdminButton(data.role === 'admin');
+                    
+                    showApp();
+                } else {
+                    console.log(data.error);
+                    
+                    // Mostrar mensaje de error específico para cuentas bloqueadas
+                    const messageDiv = document.getElementById("message");
+                    if (res.status === 403 && data.message) {
+                        messageDiv.innerHTML = `<div class="alert alert-danger">🚫 ${data.message}</div>`;
+                    } else {
+                        messageDiv.innerHTML = `<div class="alert alert-danger">❌ ${data.error}</div>`;
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                const messageDiv = document.getElementById("message");
+                messageDiv.innerHTML = '<div class="alert alert-danger">🚨 Error de conexión con el servidor</div>';
+            }
+        });
+    }
+
+    if (registerBtn) {
+        registerBtn.addEventListener("click", async () => {
+            const username = document.getElementById("regUsername").value.trim();
+            const email = document.getElementById("regEmail").value.trim();
+            const password = document.getElementById("regPassword").value;
+                
+            const messageElement = document.getElementById("registerMessage");
+            messageElement.innerHTML = '';
+
+            if (!username || !email || !password) {
+                messageElement.innerHTML = '<div class="alert alert-warning py-2">⚠️ Todos los campos son obligatorios.</div>';
+                return; 
+            }
+            try {
+                const res = await fetch(`${API_BASE_URL}/register`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ username, email, password })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    messageElement.innerHTML = '<div class="alert alert-success py-2">✅ ¡Registro exitoso! Puedes iniciar sesión.</div>';
+                    document.getElementById("regUsername").value = '';
+                    document.getElementById("regEmail").value = '';
+                    document.getElementById("regPassword").value = '';
+                } else {
+                    const errorMsg = data.error || "Error desconocido al registrar.";
+                    messageElement.innerHTML = `<div class="alert alert-danger py-2">❌ Error: ${errorMsg}</div>`;
+                }
+            } catch (err) {
+                console.error(err);
+                messageElement.innerHTML = '<div class="alert alert-danger py-2">🚨 Error de conexión con el servidor.</div>';
+            }
+        });
+    }
+
+    if (logoutBtn) {
+        logoutBtn.addEventListener("click", async () => {
+            console.log("Logout button clicked");
+            
+            try {
+                await fetch(`${API_BASE_URL}/logout`, { method: "POST", credentials: "include" });
+                console.log("Logout request completed");
+            } catch (err) {
+                console.error("Error during logout:", err);
+            }
+            
+            // Limpiar variables globales
+            currentUserId = null;
+            currentUsername = null;
+            if (userDisplayEl) userDisplayEl.textContent = 'Usuario';
+            
+            // Limpiar imagen de perfil de la UI
+            if (profilePictureEl) {
+                profilePictureEl.src = getProfileImageUrl(null, '100');
+            }
+            
+            // Forzar regreso a login con timeout para asegurar que se ejecute
+            setTimeout(() => {
+                console.log("Executing showAuth after logout");
+                forceShowAuth();
+            }, 100);
+        });
+    }
+
+    // Event listener para búsqueda
+    const searchInput = document.getElementById("searchInput");
+    if (searchInput) {
+        searchInput.addEventListener("keyup", async (e) => {
+            const query = e.target.value.trim();
+            document.getElementById("welcomeMessage").style.display = "none";
+            document.getElementById("topAlbumsContainer").style.display = "none";
+            document.getElementById("mostReviewedAlbumsSection").style.display = "none"; 
+            document.getElementById("randomReviewsSection").style.display = "none";
+            
+            if (query.length < 2) {
+                document.getElementById("albumsRow").innerHTML = "";
+                renderTopAlbums();
+                renderMostReviewedAlbums(); 
+                renderRandomHighStarReviews();
+                document.getElementById("topAlbumsContainer").style.display = "block";
+                document.getElementById("mostReviewedAlbumsSection").style.display = "block"; 
+                document.getElementById("randomReviewsSection").style.display = "block";
+                document.getElementById("welcomeMessage").style.display = "block";
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE_URL}/search?q=${query}`, { credentials: "include" });
+                const data = await res.json();
+                if (data.albums?.items?.length > 0) renderAlbums(data.albums.items);
+                else document.getElementById("albumsRow").innerHTML = "<div class='col-12 text-center'>Sin resultados.</div>";
+            } catch (err) {
+                console.error(err);
+            }
+        });
+    }
+
+    // Event listeners para el carousel
+    const arrowLeft = document.getElementById("arrowLeft");
+    const arrowRight = document.getElementById("arrowRight");
+    const topAlbumsRow = document.getElementById("topAlbumsRow");
+    
+    console.log('Setting up carousel event listeners:', {
+        arrowLeft: !!arrowLeft,
+        arrowRight: !!arrowRight,
+        topAlbumsRow: !!topAlbumsRow
+    });
+    
+    if (arrowLeft && arrowRight) {
+        arrowLeft.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Left arrow clicked - using fixed function');
+            scrollCarouselFixed('left');
+        });
+        
+        arrowRight.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Right arrow clicked - using fixed function');
+            scrollCarouselFixed('right');
+        });
+        
+        console.log('Carousel click listeners added successfully');
+    }
+    
+    // Event listener para actualizar flechas cuando se hace scroll
+    if (topAlbumsRow) {
+        topAlbumsRow.addEventListener("scroll", () => {
+            updateCarouselArrows();
+        });
+        console.log('Carousel scroll listener added');
+    }
+});
+
+// ========================
+// UPLOAD DE FOTO DE PERFIL
+// ========================
+async function uploadProfilePicture() {
+    if (!photoFileInput.files.length) {
+        console.log('No hay archivos seleccionados');
+        return;
+    }
+    
+    const file = photoFileInput.files[0];
+    console.log('Archivo seleccionado:', file.name, 'Tamaño:', file.size, 'Tipo:', file.type);
+    
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+        showUploadMessage('❌ Por favor, selecciona un archivo de imagen válido', 'error');
+        return;
+    }
+    
+    // Validar tamaño (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        showUploadMessage('❌ La imagen es demasiado grande. Máximo 5MB', 'error');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('profilePicture', file);
+    
+    // Guardar estado anterior para rollback
+    const previousButtonText = changePhotoBtn ? changePhotoBtn.innerHTML : '';
+    const previousButtonDisabled = changePhotoBtn ? changePhotoBtn.disabled : false;
+    const previousImageSrc = profilePictureEl ? profilePictureEl.src : '';
+    const previousImageOpacity = profilePictureEl ? profilePictureEl.style.opacity : '1';
+    
+    // Mostrar indicador de carga
+    if (changePhotoBtn) {
+        changePhotoBtn.innerHTML = '<img src="/icons/icono_ftperfil_predeterminado.svg" alt="Subiendo" style="width: 30px; height: 30px; filter: brightness(0) invert(1); animation: spin 1s linear infinite;"> Subiendo...';
+        changePhotoBtn.disabled = true;
+    }
+    
+    // Mostrar imagen de carga temporal
+    if (profilePictureEl) {
+        profilePictureEl.style.opacity = '0.5';
+    }
+    
+    // Mostrar feedback inmediato
+    showUploadMessage('📤 Subiendo imagen...', 'info');
+    
+    try {
+        console.log('Iniciando upload de foto para usuario:', currentUserId);
+        
+        const response = await fetch(`${API_BASE_URL}/user/upload-photo`, {
+            method: 'POST',
+            body: formData, 
+            credentials: 'include'
+        });
+        
+        console.log('Respuesta del servidor:', response.status);
+        
+        const data = await response.json();
+        console.log('Datos de respuesta completos:', data);
+        
+        if (response.ok && data.success) {
+            console.log('Foto subida exitosamente:', data.url);
+            
+            try {
+                // Actualizar imagen inmediatamente con cache busting
+                await updateProfilePicture(data.url);
+                
+                // Mostrar mensaje de éxito
+                showUploadMessage('✅ Foto actualizada correctamente', 'success');
+                
+                // Limpiar el input file
+                photoFileInput.value = '';
+                
+            } catch (updateError) {
+                console.error('Error actualizando imagen después del upload:', updateError);
+                
+                // Rollback al estado anterior
+                if (profilePictureEl) {
+                    profilePictureEl.src = previousImageSrc;
+                    profilePictureEl.style.opacity = previousImageOpacity;
+                }
+                
+                showUploadMessage('⚠️ Imagen subida pero error al mostrar. Recarga la página', 'warning');
+            }
+            
+        } else {
+            console.error('Error en respuesta:', data);
+            
+            // Rollback al estado anterior
+            if (profilePictureEl) {
+                profilePictureEl.src = previousImageSrc;
+                profilePictureEl.style.opacity = previousImageOpacity;
+            }
+            
+            // Mostrar error específico del servidor
+            const errorMessage = data.error || 'Error desconocido';
+            showUploadMessage(`❌ ${errorMessage}`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('Error de conexión:', error);
+        
+        // Rollback completo al estado anterior
+        if (profilePictureEl) {
+            profilePictureEl.src = previousImageSrc;
+            profilePictureEl.style.opacity = previousImageOpacity;
+        }
+        
+        showUploadMessage('🚨 Error de conexión. Imagen anterior mantenida', 'error');
+        
+    } finally {
+        // Restaurar botón al estado anterior
+        if (changePhotoBtn) {
+            changePhotoBtn.innerHTML = previousButtonText || '<img src="/icons/icono_ftperfil_predeterminado.svg" alt="Cambiar foto" style="width: 30px; height: 30px; filter: brightness(0) invert(1);">';
+            changePhotoBtn.disabled = previousButtonDisabled;
+        }
+        
+        // Limpiar el input file solo si no hubo errores
+        if (photoFileInput.value) {
+            photoFileInput.value = '';
+        }
+    }
+}
+
+// Enhanced function for loading profile pictures with improved validation and error handling
+async function loadProfilePictureWithEnhancedValidation(imageUrl, userId = null) {
+    if (!profilePictureEl) {
+        console.error('Elemento profilePicture no encontrado');
+        return false;
+    }
+    
+    const targetUserId = userId || currentUserId;
+    const placeholderUrl = generatePlaceholderUrl('100');
+    
+    // Store previous state for potential rollback
+    const previousState = {
+        src: profilePictureEl.src,
+        opacity: profilePictureEl.style.opacity || '1',
+        classList: Array.from(profilePictureEl.classList)
+    };
+    
+    // Handle empty or null image URL
+    if (!imageUrl) {
+        console.log('No profile picture URL provided, using placeholder');
+        profilePictureEl.src = placeholderUrl;
+        setImageState(profilePictureEl, 'normal');
+        return true;
+    }
+    
+    console.log(`Loading profile picture: ${imageUrl} for user ${targetUserId}`);
+    
+    // Show loading state with improved visual feedback
+    setImageState(profilePictureEl, 'loading');
+    showImageLoadingProgress('Cargando imagen de perfil...', 'info');
+    
+    try {
+        // Step 1: Validate image existence with enhanced dual verification
+        const validationResult = await validateImageExistsEnhanced(imageUrl, targetUserId);
+        
+        if (!validationResult.exists && !validationResult.fallbackMode) {
+            console.log(`Image validation failed: ${validationResult.reason}`);
+            profilePictureEl.src = placeholderUrl;
+            setImageState(profilePictureEl, 'normal');
+            showImageLoadingProgress(
+                validationResult.autoRepaired ? 
+                'Imagen sincronizada automáticamente' : 
+                'Imagen no encontrada, usando imagen por defecto', 
+                validationResult.autoRepaired ? 'info' : 'warning'
+            );
+            return true; // Not an error, just no image available
+        }
+        
+        // If in fallback mode, log the situation but continue with loading
+        if (validationResult.fallbackMode) {
+            console.log('Using fallback validation mode, proceeding with direct image loading');
+        }
+        
+        // Step 2: Generate cache-busted URL for consistent loading
+        const cacheBustUrl = generateEnhancedCacheBustUrl(imageUrl);
+        
+        // Step 3: Preload image with timeout and retry logic
+        const loadedUrl = await preloadImageWithRetry(cacheBustUrl, {
+            timeout: 8000,
+            retries: 2,
+            retryDelay: 1000
+        });
+        
+        // Step 4: Apply loaded image with smooth transition
+        await applyImageWithTransition(profilePictureEl, loadedUrl);
+        
+        setImageState(profilePictureEl, 'success');
+        console.log('Profile picture loaded successfully');
+        showImageLoadingProgress('Imagen de perfil cargada correctamente', 'success');
+        
+        return true;
+        
+    } catch (error) {
+        console.error('Error loading profile picture:', error);
+        
+        // Enhanced error handling with graceful degradation
+        const fallbackSuccess = await handleImageLoadingError(
+            error, 
+            imageUrl, 
+            profilePictureEl, 
+            placeholderUrl, 
+            previousState
+        );
+        
+        return fallbackSuccess;
+    }
+}
+
+
+
+// Función para actualizar la imagen de perfil inmediatamente con rollback en caso de error
+async function updateProfilePicture(imageUrl) {
+    if (!profilePictureEl) {
+        console.error('Elemento profilePicture no encontrado');
+        return;
+    }
+    
+    console.log('Actualizando imagen de perfil a:', imageUrl);
+    
+    // Guardar estado anterior para rollback
+    const previousSrc = profilePictureEl.src;
+    const previousOpacity = profilePictureEl.style.opacity;
+    
+    try {
+        // Mostrar feedback inmediato de actualización
+        showImageLoadingFeedback('Actualizando imagen de perfil...', 'info');
+        
+        // Use enhanced validation logic for immediate updates
+        await loadProfilePictureWithEnhancedValidation(imageUrl);
+        console.log(`Imagen actualizada para usuario ${currentUserId}: ${imageUrl}`);
+        
+        // Update navbar profile picture as well
+        updateNavbarProfilePicture(imageUrl);
+        
+        // Feedback de éxito
+        showImageLoadingFeedback('✅ Imagen de perfil actualizada correctamente', 'success');
+        return imageUrl;
+        
+    } catch (error) {
+        console.error('Error actualizando imagen de perfil:', error);
+        
+        // Rollback al estado anterior en caso de error
+        profilePictureEl.src = previousSrc;
+        profilePictureEl.style.opacity = previousOpacity;
+        
+        showImageLoadingFeedback('❌ Error actualizando imagen, manteniendo imagen anterior', 'error');
+        throw error;
+    }
+}
+
+// Enhanced cache busting function with additional parameters
+function generateEnhancedCacheBustUrl(url) {
+    if (!url) return url;
+    
+    const separator = url.includes('?') ? '&' : '?';
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 8);
+    
+    // Add both timestamp and random ID for stronger cache busting
+    return `${url}${separator}t=${timestamp}&r=${randomId}`;
+}
+
+// Legacy function maintained for backward compatibility
+function generateCacheBustUrl(url) {
+    if (!url) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}t=${Date.now()}`;
+}
+
+// Enhanced placeholder URL generator
+function generatePlaceholderUrl(size = '50') {
+    // Use the default profile icon instead of generating SVG
+    return `/icons/icono_ftperfil_predeterminado.svg`;
+}
+
+// Enhanced preload function with retry logic
+async function preloadImageWithRetry(url, options = {}) {
+    const { timeout = 5000, retries = 1, retryDelay = 1000 } = options;
+    
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            return await preloadImageWithTimeout(url, timeout);
+        } catch (error) {
+            console.log(`Image preload attempt ${attempt + 1} failed:`, error.message);
+            
+            if (attempt < retries) {
+                console.log(`Retrying in ${retryDelay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+            } else {
+                throw error;
+            }
+        }
+    }
+}
+
+// Preload image with timeout
+function preloadImageWithTimeout(url, timeout = 5000) {
+    return new Promise((resolve, reject) => {
+        if (!url) {
+            reject(new Error('Empty image URL'));
+            return;
+        }
+        
+        const img = new Image();
+        let timeoutId;
+        
+        const cleanup = () => {
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            img.onload = null;
+            img.onerror = null;
+            img.onabort = null;
+        };
+        
+        timeoutId = setTimeout(() => {
+            cleanup();
+            reject(new Error(`Image loading timeout after ${timeout}ms`));
+        }, timeout);
+        
+        img.onload = () => {
+            cleanup();
+            console.log('Image preloaded successfully:', url);
+            resolve(url);
+        };
+        
+        img.onerror = (event) => {
+            cleanup();
+            console.error('Error preloading image:', url, event);
+            reject(new Error(`Image loading failed: ${url}`));
+        };
+        
+        img.onabort = () => {
+            cleanup();
+            reject(new Error('Image loading aborted'));
+        };
+        
+        // Set crossOrigin if needed
+        if (url.startsWith('http') && !url.startsWith(window.location.origin)) {
+            img.crossOrigin = 'anonymous';
+        }
+        
+        img.src = url;
+    });
+}
+
+// Apply image with smooth transition
+async function applyImageWithTransition(imgElement, url) {
+    return new Promise((resolve) => {
+        // Fade out current image
+        imgElement.style.transition = 'opacity 0.2s ease-in-out';
+        imgElement.style.opacity = '0.5';
+        
+        setTimeout(() => {
+            imgElement.src = url;
+            
+            // Fade in new image
+            setTimeout(() => {
+                imgElement.style.opacity = '1';
+                resolve();
+            }, 50);
+        }, 100);
+    });
+}
+
+// Enhanced error handling for image loading
+async function handleImageLoadingError(error, originalUrl, imgElement, placeholderUrl, previousState) {
+    console.error('Handling image loading error:', error.message);
+    
+    // Determine error type and appropriate response
+    if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+        // For timeout errors, try direct loading without validation
+        try {
+            console.log('Attempting direct image load after timeout...');
+            const directUrl = generateCacheBustUrl(originalUrl);
+            await preloadImageWithTimeout(directUrl, 3000);
+            
+            await applyImageWithTransition(imgElement, directUrl);
+            setImageState(imgElement, 'success');
+            showImageLoadingProgress('Imagen cargada (validación lenta)', 'info');
+            
+            return true;
+            
+        } catch (directError) {
+            console.error('Direct loading also failed:', directError);
+        }
+    }
+    
+    // For all other errors or if direct loading failed, use placeholder
+    await applyImageWithTransition(imgElement, placeholderUrl);
+    setImageState(imgElement, 'error');
+    
+    // Show appropriate error message
+    const errorMessage = error.message.includes('timeout') ? 
+        'Tiempo de carga agotado, usando imagen por defecto' :
+        'Error cargando imagen, usando imagen por defecto';
+    
+    showImageLoadingProgress(errorMessage, 'error');
+    
+    return false; // Indicate fallback was used
+}
+
+// Enhanced function with comprehensive dual verification for image existence
+async function validateImageExistsEnhanced(imageUrl, userId = null) {
+    const targetUserId = userId || currentUserId;
+    
+    if (!imageUrl || !targetUserId) {
+        console.log('Image validation: Missing URL or userId');
+        return { 
+            exists: false, 
+            reason: 'Missing required parameters',
+            autoRepaired: false 
+        };
+    }
+    
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // Increased timeout
+        
+        const response = await fetch(`${API_BASE_URL}/check-image/${targetUserId}`, {
+            credentials: 'include',
+            signal: controller.signal,
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            console.error(`Image validation error: ${response.status} ${response.statusText}`);
+            
+            // Handle specific error cases
+            if (response.status === 404) {
+                console.warn('Image check endpoint not available, falling back to direct validation');
+                // Fallback: assume image exists and let preloading handle validation
+                return { 
+                    exists: true, 
+                    reason: 'Endpoint not available, using direct validation',
+                    autoRepaired: false,
+                    fallbackMode: true
+                };
+            }
+            
+            if (response.status === 401 || response.status === 403) {
+                return { 
+                    exists: false, 
+                    reason: 'Authentication required for image validation',
+                    autoRepaired: false 
+                };
+            }
+            
+            // For server errors, assume image might exist to avoid false negatives
+            return { 
+                exists: true, 
+                reason: 'Server error, assuming image exists',
+                autoRepaired: false 
+            };
+        }
+        
+        const data = await response.json();
+        console.log('Enhanced dual verification result:', data);
+        
+        // Process dual verification results
+        let autoRepaired = false;
+        if (data.dualVerification) {
+            const verification = data.dualVerification;
+            
+            if (verification.autoRepaired) {
+                console.log('Auto-repair performed during validation');
+                autoRepaired = true;
+                showImageLoadingProgress('Datos de imagen sincronizados automáticamente', 'info');
+            }
+            
+            if (!verification.consistent && !verification.autoRepaired) {
+                console.warn('Inconsistency detected in dual verification:', verification);
+                showImageLoadingProgress('Inconsistencia detectada en imagen de perfil', 'warning');
+            }
+        }
+        
+        const imageExists = data.exists && data.url === imageUrl;
+        
+        return {
+            exists: imageExists,
+            reason: imageExists ? 'Image validated successfully' : 'Image not found or URL mismatch',
+            autoRepaired: autoRepaired,
+            dualVerification: data.dualVerification
+        };
+        
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            console.error('Timeout validating image:', imageUrl);
+            return { 
+                exists: false, 
+                reason: 'Validation timeout',
+                autoRepaired: false 
+            };
+        } else {
+            console.error('Error in image validation:', error);
+            // In case of network error, use direct validation as fallback
+            return await performDirectImageValidation(imageUrl);
+        }
+    }
+}
+
+// Fallback validation function that directly tests image loading
+async function performDirectImageValidation(imageUrl) {
+    console.log('Performing direct image validation for:', imageUrl);
+    
+    try {
+        // Try to preload the image directly to see if it exists
+        await preloadImageWithTimeout(imageUrl, 3000);
+        
+        return {
+            exists: true,
+            reason: 'Direct validation successful',
+            autoRepaired: false,
+            directValidation: true
+        };
+        
+    } catch (error) {
+        console.log('Direct validation failed:', error.message);
+        
+        return {
+            exists: false,
+            reason: 'Direct validation failed - image not accessible',
+            autoRepaired: false,
+            directValidation: true
+        };
+    }
+}
+
+
+
+
+
+// Enhanced function for getting profile image URLs with consistent cache busting
+function getProfileImageUrl(profilePicUrl, size = '50') {
+    const placeholderUrl = generatePlaceholderUrl(size);
+    
+    if (!profilePicUrl) {
+        return placeholderUrl;
+    }
+    
+    // Use enhanced cache busting for consistent loading
+    return generateEnhancedCacheBustUrl(profilePicUrl);
+}
+
+// Enhanced function specifically for profile pictures with validation
+function getValidatedProfileImageUrl(profilePicUrl, size = '50', userId = null) {
+    const placeholderUrl = generatePlaceholderUrl(size);
+    
+    if (!profilePicUrl) {
+        return placeholderUrl;
+    }
+    
+    // For profile pictures, we want to ensure they're properly validated
+    // This function returns the URL but the actual validation happens during loading
+    return generateEnhancedCacheBustUrl(profilePicUrl);
+}
+
+// Enhanced function for handling image loading errors with improved fallback and retry logic
+function handleImageError(imgElement, size = '50') {
+    const placeholderUrl = generatePlaceholderUrl(size);
+    
+    // Prevent infinite error loops
+    if (imgElement.src === placeholderUrl || imgElement.classList.contains('placeholder-applied')) {
+        console.log('Already using placeholder, preventing error loop');
+        return;
+    }
+    
+    const originalSrc = imgElement.src;
+    console.log(`Image loading failed (${originalSrc}), applying enhanced error handling`);
+    
+    // Store original URL for potential retry
+    if (!imgElement.dataset.originalSrc) {
+        imgElement.dataset.originalSrc = originalSrc;
+    }
+    
+    // Initialize retry count
+    if (imgElement.dataset.retryCount === undefined) {
+        imgElement.dataset.retryCount = '0';
+    }
+    
+    const retryCount = parseInt(imgElement.dataset.retryCount);
+    const maxRetries = 3; // Increased retry attempts
+    
+    // Apply visual error state
+    imgElement.classList.add('image-error');
+    imgElement.title = 'Imagen no disponible';
+    
+    // Enhanced retry logic with exponential backoff
+    if (retryCount < maxRetries) {
+        const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 8000); // Exponential backoff, max 8s
+        
+        console.log(`Scheduling retry ${retryCount + 1}/${maxRetries} in ${retryDelay}ms`);
+        
+        setTimeout(async () => {
+            console.log(`Attempting image retry ${retryCount + 1}/${maxRetries}`);
+            imgElement.dataset.retryCount = (retryCount + 1).toString();
+            
+            try {
+                // Try different cache busting strategies
+                let retryUrl;
+                if (retryCount === 0) {
+                    // First retry: simple cache bust
+                    retryUrl = generateCacheBustUrl(imgElement.dataset.originalSrc);
+                } else if (retryCount === 1) {
+                    // Second retry: enhanced cache bust
+                    retryUrl = generateEnhancedCacheBustUrl(imgElement.dataset.originalSrc);
+                } else {
+                    // Final retry: try without any parameters
+                    retryUrl = imgElement.dataset.originalSrc;
+                }
+                
+                // Preload to verify the image can be loaded
+                await preloadImageWithTimeout(retryUrl, 3000);
+                
+                // If preload succeeds, apply the image
+                imgElement.classList.remove('image-error');
+                imgElement.src = retryUrl;
+                console.log(`Image retry ${retryCount + 1} successful`);
+                
+            } catch (retryError) {
+                console.log(`Image retry ${retryCount + 1} failed:`, retryError.message);
+                
+                // If this was the last retry, apply placeholder
+                if (retryCount + 1 >= maxRetries) {
+                    applyFinalPlaceholder(imgElement, placeholderUrl, size);
+                }
+            }
+        }, retryDelay);
+        
+    } else {
+        // Max retries reached, apply final placeholder
+        applyFinalPlaceholder(imgElement, placeholderUrl, size);
+    }
+}
+
+// Apply final placeholder with proper styling
+function applyFinalPlaceholder(imgElement, placeholderUrl, size) {
+    imgElement.src = placeholderUrl;
+    imgElement.classList.add('placeholder-applied');
+    imgElement.classList.remove('image-error');
+    
+    // Add subtle styling to indicate placeholder
+    imgElement.style.filter = 'grayscale(20%) opacity(0.8)';
+    imgElement.style.border = '1px solid #dee2e6';
+    
+    console.log(`Applied final placeholder for image (${size}px)`);
+}
+
+// Enhanced progress feedback function
+function showImageLoadingProgress(message, type, duration = 3000) {
+    // Only show error and warning messages to avoid spam
+    if (type === 'error' || type === 'warning') {
+        showNotification(message, type, 'imageLoadingMessage');
+    } else if (type === 'info') {
+        // Show info messages briefly
+        showNotification(message, type, 'imageLoadingMessage');
+    }
+    // Success messages are shown very briefly or not at all to avoid noise
+}
+
+// Enhanced function to verify session persistence with data synchronization
+async function verifySessionPersistence() {
+    console.log('Verificando persistencia de sesión...');
+    
+    try {
+        const res = await fetch(`${API_BASE_URL}/me`, { credentials: "include" });
+        const data = await res.json();
+        
+        if (data.loggedIn) {
+            console.log('Sesión válida encontrada:', {
+                userId: data.userId,
+                username: data.username,
+                profilePictureUrl: data.profilePictureUrl,
+                dataSync: data.dataSync
+            });
+            
+            // Check if data synchronization occurred
+            if (data.dataSync && data.dataSync.synchronized && data.dataSync.action !== 'no_action_needed') {
+                console.log('Sincronización automática realizada:', data.dataSync.action);
+                if (data.dataSync.action === 'cleaned_database_reference') {
+                    showImageLoadingFeedback('Referencia de imagen limpiada automáticamente', 'info');
+                }
+            }
+            
+            // Verificar que las variables globales estén sincronizadas
+            if (currentUserId !== data.userId) {
+                console.log('Sincronizando userId:', data.userId);
+                currentUserId = data.userId;
+            }
+            
+            if (currentUsername !== data.username) {
+                console.log('Sincronizando username:', data.username);
+                currentUsername = data.username;
+            }
+            
+            // Cargar foto de perfil si existe y no está ya cargada
+            if (data.profilePictureUrl && profilePictureEl) {
+                const currentSrc = profilePictureEl.src;
+                const expectedUrl = generateCacheBustUrl(data.profilePictureUrl);
+                
+                // Solo recargar si la imagen actual no coincide
+                if (!currentSrc.includes(data.profilePictureUrl.split('/').pop())) {
+                    console.log('Loading profile picture from persistent session');
+                    await loadProfilePictureWithEnhancedValidation(data.profilePictureUrl, data.userId);
+                }
+            } else if (!data.profilePictureUrl && profilePictureEl) {
+                // Si no hay URL de perfil, asegurar que se muestre placeholder
+                const placeholderUrl = getProfileImageUrl(null, '100');
+                if (profilePictureEl.src !== placeholderUrl) {
+                    profilePictureEl.src = placeholderUrl;
+                }
+            }
+            
+            return true;
+        } else {
+            console.log('No hay sesión válida');
+            return false;
+        }
+    } catch (error) {
+        console.error('Error verificando persistencia de sesión:', error);
+        return false;
+    }
+}
+
+// Function to trigger manual data synchronization
+async function triggerDataSynchronization() {
+    console.log('Iniciando sincronización manual de datos...');
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/sync-profile-data`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Error en sincronización: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Resultado de sincronización:', data);
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            
+            // Refresh session data after synchronization
+            await verifySessionPersistence();
+            
+            return data.results;
+        } else {
+            showNotification('Error en sincronización de datos', 'error');
+            return null;
+        }
+    } catch (error) {
+        console.error('Error en sincronización manual:', error);
+        showNotification('Error de conexión durante sincronización', 'error');
+        return null;
+    }
+}
+
+// Function to perform system-wide data synchronization (admin only)
+async function triggerSystemSynchronization() {
+    console.log('Iniciando sincronización del sistema...');
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/system/sync-data`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Error en sincronización del sistema: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Resultado de sincronización del sistema:', data);
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            return data.stats;
+        } else {
+            showNotification('Error en sincronización del sistema', 'error');
+            return null;
+        }
+    } catch (error) {
+        console.error('Error en sincronización del sistema:', error);
+        showNotification('Error de conexión durante sincronización del sistema', 'error');
+        return null;
+    }
+}
+
+// Función para mostrar mensajes de upload
+function showUploadMessage(message, type) {
+    showNotification(message, type, 'uploadMessage');
+}
+
+// Función para mostrar feedback de carga de imágenes
+function showImageLoadingFeedback(message, type) {
+    // Solo mostrar mensajes de error y warning para evitar spam
+    if (type === 'error' || type === 'warning') {
+        showNotification(message, type, 'imageLoadingMessage');
+    }
+}
+
+// Función unificada para mostrar notificaciones
+function showNotification(message, type, containerId = 'notification') {
+    // Crear o encontrar contenedor de mensajes
+    let messageContainer = document.getElementById(containerId);
+    if (!messageContainer) {
+        messageContainer = document.createElement('div');
+        messageContainer.id = containerId;
+        messageContainer.className = 'notification';
+        messageContainer.style.cssText = `
+            position: fixed;
+            top: ${containerId === 'uploadMessage' ? '20px' : '70px'};
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 10000;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            max-width: 300px;
+            word-wrap: break-word;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        `;
+        document.body.appendChild(messageContainer);
+    }
+    
+    // Configurar estilo según tipo
+    const colors = {
+        'success': 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+        'error': 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)',
+        'warning': 'linear-gradient(135deg, #ffc107 0%, #e0a800 100%)',
+        'info': 'linear-gradient(135deg, #17a2b8 0%, #138496 100%)'
+    };
+    
+    messageContainer.style.background = colors[type] || colors['info'];
+    messageContainer.style.color = type === 'warning' ? '#212529' : 'white';
+    messageContainer.textContent = message;
+    messageContainer.style.opacity = '1';
+    messageContainer.style.transform = 'translateX(0)';
+    messageContainer.className = `notification ${type}`;
+    
+    // Limpiar timeout anterior si existe
+    if (messageContainer.hideTimeout) {
+        clearTimeout(messageContainer.hideTimeout);
+    }
+    
+    // Ocultar después de un tiempo variable según el tipo
+    const hideDelay = type === 'error' ? 5000 : type === 'warning' ? 4000 : 3000;
+    
+    messageContainer.hideTimeout = setTimeout(() => {
+        messageContainer.className += ' hiding';
+        messageContainer.style.opacity = '0';
+        messageContainer.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            if (messageContainer.parentNode) {
+                messageContainer.parentNode.removeChild(messageContainer);
+            }
+        }, 300);
+    }, hideDelay);
+}
+
+// Función para manejar estados visuales de imágenes
+function setImageState(imgElement, state) {
+    if (!imgElement) return;
+    
+    // Limpiar clases anteriores
+    imgElement.classList.remove('loading', 'error', 'success', 'image-loading', 'image-error', 'image-success');
+    
+    switch (state) {
+        case 'loading':
+            imgElement.classList.add('loading', 'image-loading');
+            imgElement.style.opacity = '0.6';
+            imgElement.style.filter = 'blur(1px)';
+            break;
+            
+        case 'error':
+            imgElement.classList.add('error', 'image-error');
+            imgElement.style.opacity = '0.8';
+            imgElement.style.filter = 'grayscale(20%)';
+            imgElement.style.border = '2px dashed #dc3545';
+            break;
+            
+        case 'success':
+            imgElement.classList.add('success', 'image-success');
+            imgElement.style.opacity = '1';
+            imgElement.style.filter = 'none';
+            imgElement.style.border = '';
+            break;
+            
+        default:
+            imgElement.style.opacity = '1';
+            imgElement.style.filter = 'none';
+            imgElement.style.border = '';
+    }
+}
+
+// ========================
+// DETALLES DE ÁLBUM Y RESEÑAS
+// ========================
+window.renderAlbumDetailsLogic = async function(spotify_id) {
+    document.getElementById("albumFeed").style.display = "none";
+    document.getElementById("searchContainer").style.display = "none";
+    document.getElementById("topAlbumsContainer").style.display = "none";
+    document.getElementById("mostReviewedAlbumsSection").style.display = "none"; 
+    document.getElementById("randomReviewsSection").style.display = "none";
+    if (profileContainer) profileContainer.style.display = "none";
+    
+    const container = document.getElementById("albumDetailContainer");
+    container.style.display = "block";
+    container.innerHTML = `<div class="text-center py-5"><div class="spinner-border"></div></div>`;
+    
+    try {
+        const [album, reviews] = await Promise.all([
+            fetch(`${API_BASE_URL}/album/${spotify_id}`, {credentials:"include"}).then(r=>r.json()),
+            fetch(`${API_BASE_URL}/reviews/album/${spotify_id}`, {credentials:"include"}).then(r=>r.json())
+        ]);
+        
+        container.innerHTML = `
+        <div class="col-md-8 mx-auto">
+            <button onclick="showApp()" class="btn btn-sm btn-outline-secondary mb-3">← Volver</button>
+            <div class="bg-white p-4 rounded shadow">
+                <div class="row align-items-center mb-4">
+                    <div class="col-md-4"><img src="${album.images[0].url}" class="img-fluid rounded shadow"></div>
+                    <div class="col-md-8">
+                        <h2 id="albumTitle" style="color: #000000 !important; font-size: 2.8rem; font-weight: 700;">${album.name}</h2>
+                        <h5 class="text-muted">${album.artists[0].name}</h5>
+                        <p class="text-muted">Fecha de lanzamiento: ${album.release_date}</p>
+                        <p class="text-muted">Canciones: ${album.total_tracks}</p>
+                    </div>
+                </div>
+                <hr>
+                <h5 style="color: #424242 !important;">Canciones:</h5>
+                <ul class="list-group mb-4" id="albumTracksList">
+                    ${album.tracks.items.map((track, i) => 
+                        `<li class="list-group-item py-1">${i+1}. ${track.name}</li>`
+                    ).join('')}
+                </ul>
+                <hr>
+                <h5 class="reviews-title" style="color: #000000 !important;">Reseñas</h5>
+                <div id="reviewsContainer" class="mb-4"></div>
+                <div class="card bg-light p-3">
+                    <h6>Deja tu reseña</h6>
+                    <div id="starSelector" class="fs-3 mb-2" style="cursor:pointer;"></div>
+                    <textarea id="reviewComment" class="form-control mb-2" placeholder="Escribe tu reseña..."></textarea>
+                    <button id="submitReview" class="btn btn-primary w-100">Enviar</button>
+                </div>
+            </div>
+        </div>
+        `;
+        
+        // Mostrar reseñas existentes
+        const revCont = document.getElementById("reviewsContainer");
+        if (reviews && reviews.length > 0) {
+            const reviewsHtml = reviews.map(r => {
+                const profileSrc = getProfileImageUrl(r.profile_pic_url, '60');
+                const isOwnReview = r.user_id === currentUserId;
+                const reportButton = !isOwnReview ? 
+                    `<button class="btn btn-sm btn-outline-danger ms-2" onclick="reportReview(${r.id}, '${r.username}')" title="Reportar reseña">
+                        <img src="/icons/icono_reporte.svg" alt="Reportar" style="width: 50px; height: 50px;">
+                    </button>` : '';
+
+                return `
+                    <div class="border-bottom py-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="d-flex align-items-center">
+                                <img src="${profileSrc}" 
+                                     class="rounded-circle me-2" 
+                                     style="width: 60px; height: 60px; object-fit: cover;"
+                                     onerror="handleImageError(this, '60')">
+                                <strong class="review-username" style="color: #000000 !important;">${r.username}</strong>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <span class="text-warning">${createStars(r.stars)}</span>
+                                ${reportButton}
+                            </div>
+                        </div>
+                        <p class="m-0 text-muted">${r.comment}</p>
+                    </div>
+                `;
+            }).join('');
+            revCont.innerHTML = reviewsHtml;
+        } else {
+            revCont.innerHTML = "<small class='text-muted'>Sin reseñas.</small>";
+        }
+        
+        // Sistema de estrellas para nueva reseña
+        let rating = 0;
+        const starSel = document.getElementById("starSelector");
+        const renderStars = (v) => {
+            starSel.innerHTML = "";
+            for(let i=1; i<=5; i++){
+                const s = document.createElement("span");
+                s.innerText = i<=v ? "★" : "☆";
+                s.style.color = i<=v ? "gold" : "#ccc";
+                s.onclick = () => { rating = i; renderStars(i); };
+                starSel.appendChild(s);
+            }
+        };
+        renderStars(0);
+        
+        // Enviar reseña
+        document.getElementById("submitReview").onclick = async () => {
+            const comment = document.getElementById("reviewComment").value.trim();
+            if(!rating || !comment) {
+                alert("Por favor, selecciona una calificación y escribe un comentario.");
+                return;
+            }
+            
+            try {
+                const res = await fetch(`${API_BASE_URL}/reviews/album/${spotify_id}`, {
+                    method:"POST",
+                    headers:{"Content-Type":"application/json"},
+                    credentials:"include",
+                    body: JSON.stringify({stars:rating, comment})
+                });
+                
+                const data = await res.json();
+                if (data.success) {
+                    // Recargar la página de detalles para mostrar la nueva reseña
+                    window.renderAlbumDetailsLogic(spotify_id);
+                } else {
+                    alert("Error al enviar reseña: " + (data.error || "Error desconocido"));
+                }
+            } catch (err) {
+                console.error("Error enviando reseña:", err);
+                alert("Error de conexión al enviar reseña");
+            }
+        };
+        
+    } catch(e) { 
+        console.error("Error al renderizar detalles del álbum:", e);
+        container.innerHTML = `<div class="text-center py-5 text-danger">Error al cargar el álbum.</div>`; 
+    }
+};
+// ========================
+// FUNCIONES GLOBALES
+// Funciones globales necesarias para el HTML
+window.showApp = showApp;
+window.handleImageError = handleImageError;
+window.renderAlbumDetailsLogic = renderAlbumDetailsLogic;
+
+// ========================
+// SISTEMA DE REPORTES
+// ========================
+
+// Función para reportar una reseña
+window.reportReview = async function(reviewId, username) {
+    const reasons = [
+        { value: 'spam', text: 'Spam o contenido repetitivo' },
+        { value: 'inappropriate', text: 'Contenido inapropiado' },
+        { value: 'harassment', text: 'Acoso o intimidación' },
+        { value: 'fake', text: 'Reseña falsa o engañosa' },
+        { value: 'other', text: 'Otro motivo' }
+    ];
+
+    const reasonOptions = reasons.map(r => 
+        `<option value="${r.value}">${r.text}</option>`
+    ).join('');
+
+    const modalHtml = `
+        <div class="modal fade" id="reportModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                          <img src="/icons/icono_reporte.svg" alt="Reportar" class="me-2" style="width: 50px; height: 50px;">
+                          Reportar Reseña
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Estás reportando la reseña de <strong>${username}</strong></p>
+                        <div class="mb-3">
+                            <label class="form-label">Motivo del reporte:</label>
+                            <select class="form-select" id="reportReason">
+                                <option value="">Selecciona un motivo...</option>
+                                ${reasonOptions}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descripción adicional (opcional):</label>
+                            <textarea class="form-control" id="reportDescription" rows="3" 
+                                placeholder="Proporciona más detalles sobre el problema..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-danger" onclick="submitReport(${reviewId})">Enviar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Remover modal anterior si existe
+    const existingModal = document.getElementById('reportModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    // Agregar modal al DOM
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Mostrar modal
+    const modal = new bootstrap.Modal(document.getElementById('reportModal'));
+    modal.show();
+};
+
+// Función para enviar el reporte
+window.submitReport = async function(reviewId) {
+    const reason = document.getElementById('reportReason').value;
+    const description = document.getElementById('reportDescription').value.trim();
+
+    if (!reason) {
+        alert('Por favor selecciona un motivo para el reporte.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/reports`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                reportedReviewId: reviewId,
+                reason: reason,
+                description: description || null
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Cerrar modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('reportModal'));
+            modal.hide();
+
+            // Mostrar mensaje de éxito
+            showReportMessage('✅ Reporte enviado correctamente. Será revisado por un administrador.', 'success');
+        } else {
+            showReportMessage('❌ ' + (data.error || 'Error al enviar el reporte'), 'error');
+        }
+
+    } catch (error) {
+        console.error('Error enviando reporte:', error);
+        showReportMessage('🚨 Error de conexión. Inténtalo de nuevo.', 'error');
+    }
+};
+
+// Función para mostrar mensajes de reporte
+function showReportMessage(message, type) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show position-fixed" 
+             style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', alertHtml);
+
+    // Auto-remover después de 5 segundos
+    setTimeout(() => {
+        const alert = document.querySelector('.alert');
+        if (alert) {
+            alert.remove();
+        }
+    }, 5000);
+}
+
+// ========================
+// FUNCIONALIDAD DEL CAROUSEL
+// ========================
+
+// Función de test para verificar el scroll
+function testScroll() {
+    const container = document.getElementById("topAlbumsRow");
+    if (!container) {
+        console.log('Container not found for test');
+        return;
+    }
+    
+    console.log('=== SCROLL TEST ===');
+    console.log('Initial state:', {
+        scrollLeft: container.scrollLeft,
+        scrollWidth: container.scrollWidth,
+        clientWidth: container.clientWidth,
+        canScroll: container.scrollWidth > container.clientWidth
+    });
+    
+    // Test scroll directo
+    console.log('Testing direct scroll...');
+    container.scrollLeft = 100;
+    console.log('After setting scrollLeft to 100:', container.scrollLeft);
+    
+    // Reset
+    container.scrollLeft = 0;
+    
+    // Test scrollTo
+    console.log('Testing scrollTo...');
+    container.scrollTo({ left: 100, behavior: 'instant' });
+    console.log('After scrollTo 100:', container.scrollLeft);
+    
+    // Reset
+    container.scrollLeft = 0;
+    console.log('=== END TEST ===');
+}
+
+// Función de prueba para scroll manual
+function testScroll() {
+    const container = document.getElementById("topAlbumsRow");
+    if (container) {
+        console.log('Testing manual scroll...');
+        container.scrollLeft += 200;
+        console.log('New scrollLeft:', container.scrollLeft);
+    }
+}
+
+// Hacer la función disponible globalmente para testing
+window.testScroll = testScroll;
+
+// Nueva función de scroll simplificada
+function scrollCarousel(direction) {
+    console.log('scrollCarousel called with direction:', direction);
+    const container = document.getElementById("topAlbumsRow");
+    if (!container) {
+        console.log('Container not found!');
+        return;
+    }
+    
+    // Debug completo del contenedor
+    console.log('Container debug:', {
+        scrollWidth: container.scrollWidth,
+        clientWidth: container.clientWidth,
+        scrollLeft: container.scrollLeft,
+        offsetWidth: container.offsetWidth,
+        style: {
+            overflowX: getComputedStyle(container).overflowX,
+            display: getComputedStyle(container).display,
+            position: getComputedStyle(container).position
+        }
+    });
+    
+    // Calcular scroll amount basado en el ancho de las cards
+    const cardWidth = 220; // 200px + 20px gap
+    const scrollAmount = cardWidth * 2; // Scroll 2 cards a la vez
+    
+    const currentScroll = container.scrollLeft;
+    let targetScroll;
+    
+    if (direction === 'left') {
+        targetScroll = Math.max(0, currentScroll - scrollAmount);
+    } else if (direction === 'right') {
+        const maxScroll = container.scrollWidth - container.clientWidth;
+        targetScroll = Math.min(maxScroll, currentScroll + scrollAmount);
+    }
+    
+    console.log('Scrolling from', currentScroll, 'to', targetScroll);
+    
+    // Probar scroll directo primero
+    console.log('Setting scrollLeft directly to:', targetScroll);
+    container.scrollLeft = targetScroll;
+    
+    // Verificar inmediatamente
+    console.log('Immediate scrollLeft after setting:', container.scrollLeft);
+    
+    // Verificar después de un momento para animaciones
+    setTimeout(() => {
+        console.log('ScrollLeft after 100ms:', container.scrollLeft);
+        
+        if (container.scrollLeft !== targetScroll) {
+            console.log('Direct scroll failed, trying scrollTo...');
+            container.scrollTo({
+                left: targetScroll,
+                behavior: 'smooth'
+            });
+            
+            setTimeout(() => {
+                console.log('ScrollLeft after scrollTo:', container.scrollLeft);
+            }, 200);
+        }
+    }, 100);
+    
+    // Actualizar visibilidad de flechas después del scroll
+    setTimeout(() => updateCarouselArrows(), 500);
+}
+
+// Función de scroll simplificada que debería funcionar
+function scrollCarouselFixed(direction) {
+    const container = document.getElementById("topAlbumsRow");
+    if (!container) return;
+    
+    const scrollAmount = 300;
+    
+    if (direction === 'left') {
+        container.scrollLeft = Math.max(0, container.scrollLeft - scrollAmount);
+    } else if (direction === 'right') {
+        container.scrollLeft = Math.min(
+            container.scrollWidth - container.clientWidth,
+            container.scrollLeft + scrollAmount
+        );
+    }
+    
+    setTimeout(() => updateCarouselArrows(), 100);
+}
+
+function updateCarouselArrows() {
+    const container = document.getElementById("topAlbumsRow");
+    const arrowLeft = document.getElementById("arrowLeft");
+    const arrowRight = document.getElementById("arrowRight");
+    
+    if (!container || !arrowLeft || !arrowRight) {
+        console.log('updateCarouselArrows: Missing elements', {container: !!container, arrowLeft: !!arrowLeft, arrowRight: !!arrowRight});
+        return;
+    }
+    
+    // Verificar si hay contenido suficiente para hacer scroll
+    const hasOverflow = container.scrollWidth > container.clientWidth;
+    
+    if (!hasOverflow) {
+        // Si no hay overflow, ocultar ambas flechas
+        arrowLeft.style.opacity = '0.3';
+        arrowRight.style.opacity = '0.3';
+        arrowLeft.style.pointerEvents = 'none';
+        arrowRight.style.pointerEvents = 'none';
+        return;
+    }
+    
+    const canScrollLeft = container.scrollLeft > 5; // Pequeño margen para evitar problemas de precisión
+    const canScrollRight = container.scrollLeft < (container.scrollWidth - container.clientWidth - 5);
+    
+    console.log('updateCarouselArrows:', {
+        scrollLeft: container.scrollLeft,
+        scrollWidth: container.scrollWidth,
+        clientWidth: container.clientWidth,
+        hasOverflow,
+        canScrollLeft,
+        canScrollRight
+    });
+    
+    // Mostrar flechas según disponibilidad de scroll
+    arrowLeft.style.opacity = canScrollLeft ? '1' : '0.5';
+    arrowRight.style.opacity = canScrollRight ? '1' : '0.5';
+    
+    // Siempre permitir clicks si hay overflow
+    arrowLeft.style.pointerEvents = 'auto';
+    arrowRight.style.pointerEvents = 'auto';
+}
+
+// ========================
+// INICIALIZACIÓN
+// ========================
+// Inicializar con modo auth por defecto
+document.body.classList.add('auth-mode');
+document.documentElement.classList.add('auth-mode');
+checkSession();
+
+// Verificar sesión periódicamente para mantener sincronización
+setInterval(async () => {
+    if (currentUserId) {
+        await verifySessionPersistence();
+        
+        // Trigger data synchronization every 15 minutes
+        const now = Date.now();
+        if (!window.lastSyncTime || (now - window.lastSyncTime) > 15 * 60 * 1000) {
+            console.log('Ejecutando sincronización periódica de datos...');
+            await triggerDataSynchronization();
+            window.lastSyncTime = now;
+        }
+    }
+}, 5 * 60 * 1000); // Cada 5 minutos
+
+

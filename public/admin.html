@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Administración - MusicBoxd</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Jersey+10&family=Jersey+15&family=Josefin+Sans:ital,wght@0,100..700;1,100..700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <div class="navbar-brand main-title mx-auto d-flex align-items-center">
+      <img src="/icons/logotipo.jpg" alt="MusicBoxd" class="me-2" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+      MusicBoxd
+    </div>
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link" href="/">← Volver al sitio</a>
+      <button id="logoutBtn" class="btn btn-warning btn-sm d-flex align-items-center">
+        <img src="/icons/icono_cerrar_sesion.svg" alt="Logout" class="me-2" style="width: 24px; height: 24px;">
+        Cerrar sesión
+      </button>
+    </div>
+  </div>
+</nav>
+
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-12">
+      <h1 class="mb-4">
+        <img src="/icons/icono_administrador.svg" alt="Admin" class="me-2" style="width: 32px; height: 32px;">
+        Panel de Administración
+      </h1>
+      
+      <!-- Estadísticas -->
+      <div class="row mb-4">
+        <div class="col-md-3">
+          <div class="card text-center">
+            <div class="card-body">
+              <h5 class="card-title">
+                <img src="/icons/icono_usuarios.svg" alt="Usuarios" class="me-2" style="width: 50px; height: 50px;">
+                Usuarios
+              </h5>
+              <h2 class="text-primary" id="totalUsers">-</h2>
+              <small class="text-muted">Total registrados</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center">
+            <div class="card-body">
+              <h5 class="card-title">
+                <img src="/icons/icono_bloqueado.svg" alt="Bloqueados" class="me-2" style="width: 50px; height: 50px;">
+                Bloqueados
+              </h5>
+              <h2 class="text-danger" id="blockedUsers">-</h2>
+              <small class="text-muted">Usuarios bloqueados</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center">
+            <div class="card-body">
+              <h5 class="card-title">
+                <img src="/icons/icono_reseñas.svg" alt="Reseñas" class="me-2" style="width: 50px; height: 50px;">
+                Reseñas
+              </h5>
+              <h2 class="text-success" id="totalReviews">-</h2>
+              <small class="text-muted">Total publicadas</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center">
+            <div class="card-body">
+              <h5 class="card-title">
+                <img src="/icons/icono_oculto.svg" alt="Ocultas" class="me-2" style="width: 50px; height: 50px;">
+                Ocultas
+              </h5>
+              <h2 class="text-warning" id="hiddenReviews">-</h2>
+              <small class="text-muted">Reseñas ocultas</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button">
+            <img src="/icons/icono_usuarios.svg" alt="Usuarios" class="me-2" style="width: 50px; height: 50px;">
+            Usuarios
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="reviews-tab" data-bs-toggle="tab" data-bs-target="#reviews" type="button">
+            <img src="/icons/icono_reseñas.svg" alt="Reseñas" class="me-2" style="width: 50px; height: 50px;">
+            Reseñas
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reports" type="button">
+            <img src="/icons/icono_reporte.svg" alt="Reportes" class="me-2" style="width: 50px; height: 50px;">
+            Reportes
+          </button>
+        </li>
+      </ul>
+
+      <!-- Tab Content -->
+      <div class="tab-content" id="adminTabContent">
+        <!-- Usuarios -->
+        <div class="tab-pane fade show active" id="users" role="tabpanel">
+          <div class="card mt-3">
+            <div class="card-header">
+              <h5>Gestión de Usuarios</h5>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Usuario</th>
+                      <th>Email</th>
+                      <th>Rol</th>
+                      <th>Reseñas</th>
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="usersTable">
+                    <tr>
+                      <td colspan="7" class="text-center">Cargando usuarios...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reseñas -->
+        <div class="tab-pane fade" id="reviews" role="tabpanel">
+          <div class="card mt-3">
+            <div class="card-header">
+              <h5>Moderación de Reseñas</h5>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Usuario</th>
+                      <th>Álbum</th>
+                      <th>Estrellas</th>
+                      <th>Comentario</th>
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reviewsTable">
+                    <tr>
+                      <td colspan="7" class="text-center">Cargando reseñas...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reportes -->
+        <div class="tab-pane fade" id="reports" role="tabpanel">
+          <div class="card mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5>
+                <img src="/icons/icono_reporte.svg" alt="Reportes" class="me-2" style="width: 50px; height: 50px;">
+                Sistema de Reportes
+              </h5>
+              <div>
+                <select class="form-select form-select-sm" id="reportStatusFilter" onchange="loadReports()">
+                  <option value="pending">Pendientes</option>
+                  <option value="resolved">Resueltos</option>
+                  <option value="dismissed">Descartados</option>
+                </select>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="reportsStats" class="row mb-3"></div>
+              <div class="table-responsive">
+                <table class="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Reportante</th>
+                      <th>Tipo</th>
+                      <th>Motivo</th>
+                      <th>Contenido</th>
+                      <th>Fecha</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reportsTable">
+                    <tr>
+                      <td colspan="7" class="text-center">
+                        <div class="spinner-border spinner-border-sm"></div>
+                        Cargando reportes...
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modales -->
+<!-- Modal para bloquear usuario -->
+<div class="modal fade" id="blockUserModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Bloquear Usuario</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>¿Estás seguro de que quieres bloquear a <strong id="blockUsername"></strong>?</p>
+        <div class="mb-3">
+          <label for="blockReason" class="form-label">Razón del bloqueo:</label>
+          <textarea class="form-control" id="blockReason" rows="3" placeholder="Describe la razón del bloqueo..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="confirmBlockUser">Bloquear Usuario</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para ocultar reseña -->
+<div class="modal fade" id="hideReviewModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Ocultar Reseña</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>¿Estás seguro de que quieres ocultar esta reseña?</p>
+        <div class="mb-3">
+          <label for="hideReason" class="form-label">Razón:</label>
+          <textarea class="form-control" id="hideReason" rows="3" placeholder="Describe la razón..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-warning" id="confirmHideReview">Ocultar Reseña</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="js/admin.js"></script>
+
+</body>
+</html>
