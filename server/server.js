@@ -593,7 +593,7 @@ app.post("/user/upload-photo", upload.single('profilePicture'), handleMulterErro
     await pool.query('COMMIT');
     
     // Clean up old profile pictures (including the specific old one and any orphaned files)
-    await cleanupOldProfilePictures(req.session.userId, path.basename(req.file.filename));
+    await cleanupOldProfilePictures(req.session.userId, correctFilename);
     
     // Double-check that the new file still exists after cleanup
     if (!validateFileExists(newFilePath)) {
