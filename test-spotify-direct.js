@@ -1,76 +1,82 @@
-// Test directo para verificar qué devuelve Spotify API
-// Ejecutar en el servidor con: node test-spotify-direct.js
+// Test directo con Spotify API para verificar preview URLs
+// Ejecutar en consola del navegador
 
-import fetch from 'node-fetch';
-import { config } from './server/config.js';
-
-const CLIENT_ID = config.spotify.clientId;
-const CLIENT_SECRET = config.spotify.clientSecret;
-
-async function getToken() {
-  const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString("base64");
-
-  const response = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-
-  const data = await response.json();
-  return data.access_token;
-}
-
-async function testSpotifyAPI() {
-  console.log('🔧 Probando Spotify API directamente...');
-  
-  try {
-    const token = await getToken();
-    console.log('✅ Token obtenido:', token ? 'SÍ' : 'NO');
+async function testSpotifyDirect() {
+    console.log('🔍 Verificando preview URLs directamente con Spotify...');
     
-    // Probar con diferentes álbumes
-    const albumIds = [
-      '5EuKBNjwjjhqJAQqm6avdd', // Álbum original
-      '4aawyAB9vmqN3uQ7FjRGTy', // Pitbull - Global Warming
-      '1DFixLWuPkv3KT3TnV35m3', // Imagine Dragons - Evolve
-      '2noRn2Aes5aoNVsU6iWThc'  // Dua Lipa - Future Nostalgia
+    // Álbumes de prueba con diferentes años y géneros
+    const testAlbums = [
+        { id: '4aawyAB9vmqN3uQ7FjRGTy', name: 'Global Warming - Pitbull (2012)' },
+        { id: '1DFixLWuPkv3KT3TnV35m3', name: 'Evolve - Imagine Dragons (2017)' },
+        { id: '2noRn2Aes5aoNVsU6iWThc', name: 'Future Nostalgia - Dua Lipa (2020)' },
+        { id: '5EuKBNjwjjhqJAQqm6avdd', name: 'Álbum Original' },
+        { id: '4yP0hdKOZPNshxUOjY0cZj', name: 'Adele - 25 (2015)' },
+        { id: '7txGsnDSqVMoRl6RQ9XyZP', name: 'Harry Styles - Fine Line (2019)' },
+        { id: '0ETFjACtuP2ADo6LFhL6HN', name: 'Bruno Mars - 24K Magic (2016)' }
     ];
     
-    for (const albumId of albumIds) {
-      console.log(`\n📀 Probando álbum: ${albumId}`);
-      
-      const response = await fetch(
-        `https://api.spotify.com/v1/albums/${albumId}/tracks?limit=50`,
-        { 
-          headers: { Authorization: `Bearer ${token}` }
+    console.log('📊 Probando', testAlbums.length, 'álbumes...\n');
+    
+    let albumsWithPreviews = 0;
+    let totalTracks = 0;
+    let tracksWithPreviews = 0;
+    
+    for (const album of testAlbums) {
+        try {
+            console.log('🎵 Probando:', album.name);
+            
+            const response = await fetch(`/album/${album.id}/tracks`, { 
+                credentials: 'include' 
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                totalTracks += data.totalTracks || 0;
+                tracksWithPreviews += data.tracksWithPreviewCount || 0;
+                
+                if (data.hasPreview) {
+                    albumsWithPreviews++;
+                    console.log('✅', album.name + ':', data.tracksWithPreviewCount, 'previews de', data.totalTracks, 'tracks');
+                } else {
+                    console.log('❌', album.name + ':', 'Sin previews');
+                }
+            } else {
+                console.log('⚠️', album.name + ':', 'Error', response.status);
+            }
+            
+            // Pequeña pausa para no saturar la API
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+        } catch (error) {
+            console.log('❌', album.name + ':', 'Error -', error.message);
         }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`✅ Respuesta OK - ${data.items.length} tracks`);
-        
-        let tracksWithPreview = 0;
-        data.items.forEach((track, i) => {
-          if (track.preview_url) {
-            tracksWithPreview++;
-            console.log(`  ${i+1}. ${track.name} - ✅ Preview: ${track.preview_url}`);
-          } else {
-            console.log(`  ${i+1}. ${track.name} - ❌ Sin preview`);
-          }
-        });
-        
-        console.log(`📊 Resumen: ${tracksWithPreview}/${data.items.length} tracks con preview`);
-      } else {
-        console.log(`❌ Error ${response.status}: ${response.statusText}`);
-      }
     }
     
-  } catch (error) {
-    console.log('❌ Error:', error.message);
-  }
+    console.log('\n📈 RESUMEN FINAL:');
+    console.log('- Álbumes con previews:', albumsWithPreviews, 'de', testAlbums.length);
+    console.log('- Total tracks analizados:', totalTracks);
+    console.log('- Tracks con preview:', tracksWithPreviews);
+    console.log('- Porcentaje de previews:', Math.round((tracksWithPreviews / totalTracks) * 100) + '%');
+    
+    if (albumsWithPreviews === 0) {
+        console.log('\n🚨 PROBLEMA IDENTIFICADO:');
+        console.log('Spotify ya no proporciona preview URLs para estos álbumes populares.');
+        console.log('Esto es un cambio en las políticas de Spotify, no un error del código.');
+        console.log('\n💡 SOLUCIONES POSIBLES:');
+        console.log('1. Buscar álbumes más antiguos (2010-2015) que aún tengan previews');
+        console.log('2. Usar álbumes de artistas independientes');
+        console.log('3. Implementar mensaje informativo para usuarios');
+        console.log('4. Considerar API alternativa (YouTube, SoundCloud, etc.)');
+    }
+    
+    return {
+        albumsWithPreviews,
+        totalAlbums: testAlbums.length,
+        totalTracks,
+        tracksWithPreviews,
+        previewPercentage: Math.round((tracksWithPreviews / totalTracks) * 100)
+    };
 }
 
-testSpotifyAPI();
+// Ejecutar test
+testSpotifyDirect();

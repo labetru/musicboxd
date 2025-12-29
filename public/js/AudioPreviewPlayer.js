@@ -130,7 +130,8 @@ class AudioPreviewPlayer {
       hasPreview: data.hasPreview,
       totalTracks: data.totalTracks,
       tracksWithPreviewCount: data.tracksWithPreviewCount,
-      tracks: data.tracks?.length || 0
+      tracks: data.tracks?.length || 0,
+      sources: data.sources || 'no disponible'
     });
     
     // Verificar formato de respuesta del servidor
@@ -238,7 +239,7 @@ class AudioPreviewPlayer {
   }
 
   /**
-   * Valida que una URL de preview sea válida
+   * Valida que una URL de preview sea válida (Spotify o Deezer)
    */
   isValidPreviewUrl(url) {
     if (!url || typeof url !== 'string') {
@@ -247,7 +248,22 @@ class AudioPreviewPlayer {
     
     // Verificar que sea una URL de Spotify válida
     const spotifyPreviewPattern = /^https:\/\/p\.scdn\.co\/mp3-preview\//;
-    return spotifyPreviewPattern.test(url);
+    if (spotifyPreviewPattern.test(url)) {
+      return true;
+    }
+    
+    // Verificar que sea una URL de Deezer válida
+    const deezerPreviewPattern = /^https:\/\/cdns-preview-[a-z0-9]\.dzcdn\.net\//;
+    if (deezerPreviewPattern.test(url)) {
+      return true;
+    }
+    
+    // Validación básica para otras URLs de preview
+    if (url.startsWith('https://') && url.includes('preview')) {
+      return true;
+    }
+    
+    return false;
   }
 
   /**
@@ -753,7 +769,7 @@ class AudioPreviewPlayer {
       NETWORK_ERROR: 'Sin conexión a internet. Verifica tu conexión y vuelve a intentar.',
       SPOTIFY_API_ERROR: 'El servicio de música no está disponible temporalmente. Intenta más tarde.',
       AUDIO_ERROR: 'Tu navegador no puede reproducir este audio. Intenta actualizar la página.',
-      NO_PREVIEW_ERROR: 'Este álbum no tiene muestras de audio disponibles.',
+      NO_PREVIEW_ERROR: 'Este álbum no tiene muestras de audio disponibles. Spotify no proporciona previews para todos los álbumes debido a restricciones de licenciamiento.',
       GENERAL_ERROR: 'Ocurrió un error inesperado. Intenta recargar la página.'
     };
     

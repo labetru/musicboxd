@@ -1232,31 +1232,47 @@ app.get("/album/:id/tracks", async (req, res) => {
     }
 
     // Validar y procesar tracks con preview URLs
-    const processedTracks = data.items.map(track => {
-      // Log temporal para debugging
-      if (track.preview_url) {
-        console.log(`[TRACKS] Preview URL encontrada: ${track.preview_url}`);
+    // Validar y procesar tracks con preview URLs de Deezer
+    console.log(`[TRACKS] Procesando ${data.items.length} tracks con búsqueda en Deezer...`);
+    
+    const processedTracks = await Promise.all(data.items.map(async (track, index) => {
+      console.log(`[TRACKS] Procesando track ${index + 1}/${data.items.length}: ${track.name}`);
+      
+      // Primero intentar con Spotify (por si acaso)
+      let previewUrl = validatePreviewUrl(track.preview_url);
+      let source = 'spotify';
+      
+      // Si no hay preview de Spotify, buscar en Deezer
+      if (!previewUrl && track.artists && track.artists.length > 0) {
+        const deezerResult = await searchDeezerPreview(track.name, track.artists[0].name);
+        previewUrl = deezerResult.preview_url;
+        source = deezerResult.source;
       }
       
-      const validatedPreviewUrl = validatePreviewUrl(track.preview_url);
       return {
         id: track.id,
         name: track.name || 'Track sin nombre',
-        preview_url: validatedPreviewUrl,
+        preview_url: previewUrl,
         duration_ms: track.duration_ms || 0,
         track_number: track.track_number || 0,
         artists: track.artists ? track.artists.map(artist => ({
           name: artist.name || 'Artista desconocido',
           id: artist.id
         })) : [],
-        available: validatedPreviewUrl !== null
+        available: previewUrl !== null,
+        source: source
       };
-    });
+    }));
 
     // Filtrar tracks con preview disponible
     const tracksWithPreview = processedTracks.filter(track => track.available);
+    const deezerTracks = tracksWithPreview.filter(track => track.source === 'deezer');
+    const spotifyTracks = tracksWithPreview.filter(track => track.source === 'spotify');
     
-    console.log(`[TRACKS] Procesados ${processedTracks.length} tracks, ${tracksWithPreview.length} con preview para álbum ${albumId}`);
+    console.log(`[TRACKS] Procesados ${processedTracks.length} tracks para álbum ${albumId}:`);
+    console.log(`[TRACKS] - Con preview: ${tracksWithPreview.length}`);
+    console.log(`[TRACKS] - Desde Spotify: ${spotifyTracks.length}`);
+    console.log(`[TRACKS] - Desde Deezer: ${deezerTracks.length}`);
     
     const result = {
       tracks: processedTracks,
@@ -1265,7 +1281,12 @@ app.get("/album/:id/tracks", async (req, res) => {
       totalTracks: processedTracks.length,
       tracksWithPreviewCount: tracksWithPreview.length,
       albumId: albumId,
-      processingTime: Date.now() - startTime
+      processingTime: Date.now() - startTime,
+      sources: {
+        spotify: spotifyTracks.length,
+        deezer: deezerTracks.length,
+        total: tracksWithPreview.length
+      }
     };
 
     console.log(`[TRACKS] Enviando respuesta para álbum ${albumId}:`, {
@@ -1305,23 +1326,91 @@ app.get("/album/:id/tracks", async (req, res) => {
 });
 
 // Función auxiliar para validar preview URLs
+// Función auxiliar para buscar preview en Deezer
+async function searchDeezerPreview(trackName, artistName) {
+  try {
+    if (!trackName || !artistName) {
+      return { preview_url: null, source: 'none' };
+    }
+    
+    // Limpiar nombres para búsqueda
+    const cleanTrackName = trackName.replace(/[^\w\s]/g, '').trim();
+    const cleanArtistName = artistName.replace(/[^\w\s]/g, '').trim();
+    const searchQuery = `${cleanArtistName} ${cleanTrackName}`.trim();
+    
+    if (!searchQuery) {
+      return { preview_url: null, source: 'none' };
+    }
+    
+    console.log(`[DEEZER] Buscando: "${searchQuery}"`);
+    
+    // Buscar en Deezer API (no requiere autenticación)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const deezerResponse = await fetch(
+      `https://api.deezer.com/search?q=${encodeURIComponent(searchQuery)}&limit=5`,
+      { signal: controller.signal }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!deezerResponse.ok) {
+      console.log(`[DEEZER] Error HTTP: ${deezerResponse.status}`);
+      return { preview_url: null, source: 'deezer_error' };
+    }
+    
+    const deezerData = await deezerResponse.json();
+    
+    if (deezerData.data && deezerData.data.length > 0) {
+      // Buscar la mejor coincidencia
+      for (const deezerTrack of deezerData.data) {
+        if (deezerTrack.preview && deezerTrack.preview.length > 0) {
+          console.log(`[DEEZER] Preview encontrado: ${deezerTrack.title} - ${deezerTrack.artist.name}`);
+          return { 
+            preview_url: deezerTrack.preview,
+            source: 'deezer',
+            deezer_id: deezerTrack.id,
+            matched_title: deezerTrack.title,
+            matched_artist: deezerTrack.artist.name
+          };
+        }
+      }
+    }
+    
+    console.log(`[DEEZER] No se encontraron previews para: "${searchQuery}"`);
+    return { preview_url: null, source: 'deezer_no_results' };
+    
+  } catch (error) {
+    console.warn(`[DEEZER] Error buscando "${trackName}" - "${artistName}":`, error.message);
+    return { preview_url: null, source: 'deezer_error' };
+  }
+}
+
 function validatePreviewUrl(url) {
-  // Logging temporal para debugging
-  console.log(`[TRACKS] Validando preview URL: ${url} (tipo: ${typeof url})`);
-  
   if (!url || typeof url !== 'string') {
-    console.log(`[TRACKS] URL rechazada: null o no es string`);
     return null;
   }
   
-  // Validación muy básica: solo verificar que sea HTTPS
-  if (!url.startsWith('https://')) {
-    console.log(`[TRACKS] URL rechazada: no es HTTPS - ${url}`);
-    return null;
+  // Validar URLs de Spotify (legacy)
+  const spotifyPreviewPattern = /^https:\/\/p\.scdn\.co\/mp3-preview\//;
+  if (spotifyPreviewPattern.test(url)) {
+    return url;
   }
   
-  console.log(`[TRACKS] URL aceptada: ${url}`);
-  return url;
+  // Validar URLs de Deezer
+  const deezerPreviewPattern = /^https:\/\/cdns-preview-[a-z0-9]\.dzcdn\.net\//;
+  if (deezerPreviewPattern.test(url)) {
+    return url;
+  }
+  
+  // Validación básica para otras URLs HTTPS
+  if (url.startsWith('https://') && url.includes('preview')) {
+    return url;
+  }
+  
+  console.log(`[TRACKS] URL rechazada: formato no válido - ${url}`);
+  return null;
 }
 
 /* ==============================

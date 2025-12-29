@@ -2615,12 +2615,41 @@ window.renderAlbumDetailsLogic = async function(spotify_id) {
         };
         renderStars(0);
         
-        // Inicializar reproductor de audio
+        // Inicializar reproductor de audio de forma inteligente
         try {
-            const audioPlayer = new AudioPreviewPlayer('audioPreviewContainer', spotify_id);
-            await audioPlayer.initialize();
+            // Primero verificar si el álbum tiene previews disponibles
+            const previewCheck = await fetch(`${API_BASE_URL}/album/${spotify_id}/tracks`, {
+                credentials: 'include'
+            });
+            
+            if (previewCheck.ok) {
+                const previewData = await previewCheck.json();
+                
+                if (previewData.hasPreview && previewData.tracksWithPreviewCount > 0) {
+                    // Solo inicializar el reproductor si hay previews disponibles
+                    const audioPlayer = new AudioPreviewPlayer('audioPreviewContainer', spotify_id);
+                    await audioPlayer.initialize();
+                } else {
+                    // Mostrar mensaje informativo en lugar del reproductor
+                    const container = document.getElementById('audioPreviewContainer');
+                    if (container) {
+                        container.innerHTML = `
+                            <div class="audio-preview-unavailable text-center p-3 mb-3" style="background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+                                <div class="mb-2">
+                                    <img src="/icons/icono_reproducirMuestra.svg" alt="Audio no disponible" style="width: 24px; height: 24px; opacity: 0.5;">
+                                </div>
+                                <small class="text-muted">
+                                    <strong>Muestra de audio no disponible</strong><br>
+                                    Este álbum no tiene previews debido a restricciones de licenciamiento.
+                                </small>
+                            </div>
+                        `;
+                    }
+                }
+            }
         } catch (error) {
-            console.error('Error inicializando AudioPreviewPlayer:', error);
+            console.error('Error verificando previews de audio:', error);
+            // En caso de error, no mostrar nada (comportamiento silencioso)
         }
         
         // Enviar reseña

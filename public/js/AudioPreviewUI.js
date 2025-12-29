@@ -628,6 +628,17 @@ class AudioPreviewUI {
       return;
     }
 
+    // Personalizar mensaje para caso de no preview
+    if (message.includes('no tiene muestras de audio disponibles')) {
+      message = `
+🎵 Muestra no disponible
+
+Este álbum no tiene previews de audio disponibles. Esto es común en álbumes recientes debido a restricciones de licenciamiento de Spotify.
+
+💡 Tip: Los álbumes más antiguos (2010-2015) suelen tener más previews disponibles.
+      `.trim();
+    }
+
     this.elements.errorMessage.textContent = message;
     this.elements.error.style.display = 'block';
     this.elements.info.style.display = 'none';
@@ -639,10 +650,10 @@ class AudioPreviewUI {
     // Anunciar error inmediatamente
     this.announceToScreenReader(`Error en el reproductor: ${message}`);
 
-    // Auto-ocultar error después de 8 segundos para errores user-friendly
+    // Auto-ocultar error después de 12 segundos para mensajes informativos
     setTimeout(() => {
       this.hideError();
-    }, 8000);
+    }, 12000);
   }
 
   /**

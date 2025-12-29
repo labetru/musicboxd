@@ -60,12 +60,13 @@
 - Tracks con preview: ${data.tracksWithPreviewCount || 0}
 - Tiene preview: ${data.hasPreview ? 'SÍ' : 'NO'}
 - Tiempo de procesamiento: ${data.processingTime || 0}ms
+- Fuentes: Spotify: ${data.sources?.spotify || 0}, Deezer: ${data.sources?.deezer || 0}
                     `;
                     showResult(summary, 'success');
                     
                     if (data.tracks && data.tracks.length > 0) {
                         const trackDetails = data.tracks.map((track, i) => 
-                            `${i+1}. ${track.name} - Preview: ${track.available ? '✅' : '❌'}`
+                            `${i+1}. ${track.name} - Preview: ${track.available ? '✅' : '❌'} ${track.source ? `(${track.source})` : ''}`
                         ).join('\n');
                         showResult(`🎵 TRACKS:\n${trackDetails}`, 'info');
                     }
