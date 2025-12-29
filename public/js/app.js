@@ -136,8 +136,10 @@ function showAuth() {
   console.log("Showing authentication page");
   
   // Agregar clase para prevenir scroll y ocultar contenido
-  document.body.classList.add('auth-mode');
-  document.documentElement.classList.add('auth-mode');
+  document.body.classList.add('login-mode');
+  document.documentElement.classList.add('login-mode');
+  document.body.classList.remove('landing-mode');
+  document.documentElement.classList.remove('landing-mode');
   
   // Forzar estilos directamente
   document.body.style.overflow = 'hidden';
@@ -219,9 +221,11 @@ window.forceShowAuth = forceShowAuth;
 function showApp() {
   console.log("Showing main application");
   
-  // Quitar clase auth-mode para permitir scroll normal
-  document.body.classList.remove('auth-mode');
-  document.documentElement.classList.remove('auth-mode');
+  // Quitar clase login-mode para permitir scroll normal
+  document.body.classList.remove('login-mode');
+  document.documentElement.classList.remove('login-mode');
+  document.body.classList.remove('landing-mode');
+  document.documentElement.classList.remove('landing-mode');
   
   // Restaurar estilos normales del body
   document.body.style.overflow = '';
@@ -300,17 +304,19 @@ function showApp() {
 async function showLandingPage() {
   console.log("Showing landing page");
   
-  // Agregar clase para prevenir scroll y ocultar contenido
-  document.body.classList.add('auth-mode');
-  document.documentElement.classList.add('auth-mode');
+  // Agregar clase para permitir scroll en landing page
+  document.body.classList.add('landing-mode');
+  document.documentElement.classList.add('landing-mode');
+  document.body.classList.remove('login-mode');
+  document.documentElement.classList.remove('login-mode');
   
-  // Forzar estilos directamente
-  document.body.style.overflow = 'hidden';
-  document.body.style.height = '100vh';
-  document.body.style.position = 'fixed';
-  document.body.style.width = '100vw';
-  document.body.style.top = '0';
-  document.body.style.left = '0';
+  // Remover estilos forzados para permitir scroll en landing page
+  document.body.style.overflow = '';
+  document.body.style.height = '';
+  document.body.style.position = '';
+  document.body.style.width = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
   
   // Ocultar auth container y elementos de la aplicación
   const authContainer = document.getElementById("authContainer");
@@ -432,6 +438,13 @@ async function loadLandingStats() {
     
     // Handle both success and fallback responses
     if (data.success || data.fallback) {
+      // Remove loading overlay first
+      Object.values(statsElements).forEach(element => {
+        if (element && element.parentElement) {
+          element.parentElement.classList.remove('loading-overlay');
+        }
+      });
+      
       // Update elements with animation
       updateStatWithAnimation('totalUsersCount', data.totalUsers || 0);
       updateStatWithAnimation('totalReviewsCount', data.totalReviews || 0);
@@ -2944,9 +2957,9 @@ function updateCarouselArrows() {
 // ========================
 // INICIALIZACIÓN
 // ========================
-// Inicializar con modo auth por defecto y verificar sesión para routing condicional
-document.body.classList.add('auth-mode');
-document.documentElement.classList.add('auth-mode');
+// Inicializar con modo landing por defecto y verificar sesión para routing condicional
+document.body.classList.add('landing-mode');
+document.documentElement.classList.add('landing-mode');
 
 // Perform initial session check to determine routing
 checkSession();
