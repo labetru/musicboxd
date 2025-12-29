@@ -124,16 +124,6 @@ class AudioPreviewPlayer {
     
     const data = await response.json();
     
-    // Debug temporal: ver qué está recibiendo el cliente
-    console.log('Respuesta del servidor para tracks:', {
-      albumId: this.albumId,
-      hasPreview: data.hasPreview,
-      totalTracks: data.totalTracks,
-      tracksWithPreviewCount: data.tracksWithPreviewCount,
-      tracks: data.tracks?.length || 0,
-      sources: data.sources || 'no disponible'
-    });
-    
     // Verificar formato de respuesta del servidor
     if (!data.tracks || !Array.isArray(data.tracks)) {
       throw new Error('Formato de respuesta inválido del servidor');
