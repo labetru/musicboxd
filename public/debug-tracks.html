@@ -96,6 +96,11 @@
             }
         }
         
+        function testAlbum(albumId) {
+            document.getElementById('albumId').value = albumId;
+            testTracksAPI();
+        }
+        
         function showResult(message, type = 'info') {
             const results = document.getElementById('results');
             const div = document.createElement('div');
@@ -112,8 +117,3 @@
     </script>
 </body>
 </html>
-        
-        function testAlbum(albumId) {
-            document.getElementById('albumId').value = albumId;
-            testTracksAPI();
-        }
