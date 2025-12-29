@@ -1123,9 +1123,12 @@ app.get("/album/:id/tracks", async (req, res) => {
   const albumId = req.params.id;
   const startTime = Date.now();
   
+  console.log(`[TRACKS] Solicitando tracks para álbum: ${albumId}`);
+  
   try {
     // Validar ID del álbum
     if (!albumId || albumId.length !== 22) {
+      console.log(`[TRACKS] ID de álbum inválido: ${albumId}`);
       return res.status(400).json({ 
         error: "ID de álbum inválido",
         hasPreview: false,
@@ -1137,7 +1140,7 @@ app.get("/album/:id/tracks", async (req, res) => {
     const token = await getToken();
     
     if (!token) {
-      console.error(`No se pudo obtener token de Spotify para álbum ${albumId}`);
+      console.error(`[TRACKS] No se pudo obtener token de Spotify para álbum ${albumId}`);
       return res.status(503).json({ 
         error: "Servicio de música temporalmente no disponible",
         hasPreview: false,
@@ -1146,6 +1149,8 @@ app.get("/album/:id/tracks", async (req, res) => {
         retryable: true
       });
     }
+
+    console.log(`[TRACKS] Token obtenido, consultando Spotify API para álbum ${albumId}`);
 
     // Realizar petición a Spotify con timeout
     const controller = new AbortController();
@@ -1209,8 +1214,14 @@ app.get("/album/:id/tracks", async (req, res) => {
 
     const data = await response.json();
     
+    console.log(`[TRACKS] Respuesta de Spotify para álbum ${albumId}:`, {
+      itemsCount: data.items?.length || 0,
+      hasItems: !!data.items,
+      isArray: Array.isArray(data.items)
+    });
+    
     if (!data.items || !Array.isArray(data.items)) {
-      console.warn(`Respuesta inesperada de Spotify para álbum ${albumId}:`, data);
+      console.warn(`[TRACKS] Respuesta inesperada de Spotify para álbum ${albumId}:`, data);
       return res.status(404).json({ 
         error: "No se encontraron tracks para este álbum",
         hasPreview: false,
@@ -1240,6 +1251,8 @@ app.get("/album/:id/tracks", async (req, res) => {
     // Filtrar tracks con preview disponible
     const tracksWithPreview = processedTracks.filter(track => track.available);
     
+    console.log(`[TRACKS] Procesados ${processedTracks.length} tracks, ${tracksWithPreview.length} con preview para álbum ${albumId}`);
+    
     const result = {
       tracks: processedTracks,
       tracksWithPreview: tracksWithPreview,
@@ -1249,6 +1262,12 @@ app.get("/album/:id/tracks", async (req, res) => {
       albumId: albumId,
       processingTime: Date.now() - startTime
     };
+
+    console.log(`[TRACKS] Enviando respuesta para álbum ${albumId}:`, {
+      totalTracks: result.totalTracks,
+      tracksWithPreviewCount: result.tracksWithPreviewCount,
+      hasPreview: result.hasPreview
+    });
 
     res.json(result);
 

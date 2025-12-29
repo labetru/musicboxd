@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Tracks API</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffebee; border-left: 4px solid #f44336; }
+        .success { background: #e8f5e9; border-left: 4px solid #4caf50; }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        input { padding: 8px; margin: 5px; width: 300px; }
+    </style>
+</head>
+<body>
+    <h1>Debug AudioPreviewPlayer - Tracks API</h1>
+    
+    <div>
+        <label>Album ID de Spotify:</label><br>
+        <input type="text" id="albumId" value="5EuKBNjwjjhqJAQqm6avdd" placeholder="Ingresa el ID del álbum">
+        <button onclick="testTracksAPI()">Probar API de Tracks</button>
+        <button onclick="testDirectSpotify()">Probar Spotify Directo</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_BASE_URL = window.location.origin;
+        
+        async function testTracksAPI() {
+            const albumId = document.getElementById('albumId').value.trim();
+            if (!albumId) {
+                showResult('Error: Ingresa un Album ID', 'error');
+                return;
+            }
+            
+            showResult('Probando endpoint /album/' + albumId + '/tracks...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/album/${albumId}/tracks`, {
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`✅ API Response (${response.status}):\n${JSON.stringify(data, null, 2)}`, 'success');
+                    
+                    // Mostrar resumen
+                    const summary = `
+📊 RESUMEN:
+- Total tracks: ${data.totalTracks || 0}
+- Tracks con preview: ${data.tracksWithPreviewCount || 0}
+- Tiene preview: ${data.hasPreview ? 'SÍ' : 'NO'}
+- Tiempo de procesamiento: ${data.processingTime || 0}ms
+                    `;
+                    showResult(summary, 'success');
+                    
+                    if (data.tracks && data.tracks.length > 0) {
+                        const trackDetails = data.tracks.map((track, i) => 
+                            `${i+1}. ${track.name} - Preview: ${track.available ? '✅' : '❌'}`
+                        ).join('\n');
+                        showResult(`🎵 TRACKS:\n${trackDetails}`, 'info');
+                    }
+                } else {
+                    showResult(`❌ API Error (${response.status}):\n${JSON.stringify(data, null, 2)}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Network Error:\n${error.message}`, 'error');
+            }
+        }
+        
+        async function testDirectSpotify() {
+            const albumId = document.getElementById('albumId').value.trim();
+            if (!albumId) {
+                showResult('Error: Ingresa un Album ID', 'error');
+                return;
+            }
+            
+            showResult('Probando Spotify API directamente (esto puede fallar por CORS)...', 'info');
+            
+            try {
+                // Esto probablemente fallará por CORS, pero nos dará información
+                const response = await fetch(`https://api.spotify.com/v1/albums/${albumId}/tracks?limit=50`);
+                const data = await response.json();
+                showResult(`Spotify Direct Response:\n${JSON.stringify(data, null, 2)}`, 'info');
+            } catch (error) {
+                showResult(`Expected CORS Error (normal):\n${error.message}`, 'info');
+            }
+        }
+        
+        function showResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<pre>${message}</pre>`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+        
+        // Test automático al cargar
+        window.onload = function() {
+            showResult('🔧 Debug Tool Cargado\nUsa el Album ID: 5EuKBNjwjjhqJAQqm6avdd para probar', 'info');
+        };
+    </script>
+</body>
+</html>

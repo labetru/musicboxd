@@ -124,6 +124,16 @@ class AudioPreviewPlayer {
     
     const data = await response.json();
     
+    // Debug temporal: ver qué está recibiendo el cliente
+    console.log('Respuesta del servidor para tracks:', {
+      albumId: this.albumId,
+      hasPreview: data.hasPreview,
+      totalTracks: data.totalTracks,
+      tracksWithPreviewCount: data.tracksWithPreviewCount,
+      tracks: data.tracks?.length || 0
+    });
+    
+    // Verificar formato de respuesta del servidor
     if (!data.tracks || !Array.isArray(data.tracks)) {
       throw new Error('Formato de respuesta inválido del servidor');
     }
@@ -134,12 +144,13 @@ class AudioPreviewPlayer {
     // Guardar en cache de sesión
     AudioPreviewPlayer.saveToSessionCache(this.albumId, this.tracks);
     
-    // Verificar si hay tracks con preview disponible
-    const tracksWithPreview = this.tracks.filter(track => track.available);
-    
-    if (tracksWithPreview.length === 0) {
+    // Verificar si hay tracks con preview disponible usando la respuesta del servidor
+    if (!data.hasPreview || data.tracksWithPreviewCount === 0) {
       // Este es un caso especial - no es un error técnico sino falta de contenido
-      this.handleError(new Error('No hay muestras de audio disponibles'), 'no_preview');
+      const errorMessage = data.totalTracks > 0 ? 
+        `Este álbum tiene ${data.totalTracks} canciones pero ninguna tiene muestra de audio disponible` :
+        'No se encontraron canciones en este álbum';
+      this.handleError(new Error(errorMessage), 'no_preview');
       return;
     }
     
