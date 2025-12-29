@@ -1233,6 +1233,11 @@ app.get("/album/:id/tracks", async (req, res) => {
 
     // Validar y procesar tracks con preview URLs
     const processedTracks = data.items.map(track => {
+      // Log temporal para debugging
+      if (track.preview_url) {
+        console.log(`[TRACKS] Preview URL encontrada: ${track.preview_url}`);
+      }
+      
       const validatedPreviewUrl = validatePreviewUrl(track.preview_url);
       return {
         id: track.id,
@@ -1301,18 +1306,21 @@ app.get("/album/:id/tracks", async (req, res) => {
 
 // Función auxiliar para validar preview URLs
 function validatePreviewUrl(url) {
+  // Logging temporal para debugging
+  console.log(`[TRACKS] Validando preview URL: ${url} (tipo: ${typeof url})`);
+  
   if (!url || typeof url !== 'string') {
+    console.log(`[TRACKS] URL rechazada: null o no es string`);
     return null;
   }
   
-  // Validar que sea una URL de Spotify válida
-  const spotifyPreviewPattern = /^https:\/\/p\.scdn\.co\/mp3-preview\//;
-  
-  if (!spotifyPreviewPattern.test(url)) {
-    console.warn(`Invalid preview URL format: ${url}`);
+  // Validación muy básica: solo verificar que sea HTTPS
+  if (!url.startsWith('https://')) {
+    console.log(`[TRACKS] URL rechazada: no es HTTPS - ${url}`);
     return null;
   }
   
+  console.log(`[TRACKS] URL aceptada: ${url}`);
   return url;
 }
 

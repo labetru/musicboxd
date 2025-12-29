@@ -22,6 +22,11 @@
         <input type="text" id="albumId" value="5EuKBNjwjjhqJAQqm6avdd" placeholder="Ingresa el ID del álbum">
         <button onclick="testTracksAPI()">Probar API de Tracks</button>
         <button onclick="testDirectSpotify()">Probar Spotify Directo</button>
+        <br><br>
+        <strong>Álbumes de prueba:</strong><br>
+        <button onclick="testAlbum('4aawyAB9vmqN3uQ7FjRGTy')">Pitbull - Global Warming</button>
+        <button onclick="testAlbum('1DFixLWuPkv3KT3TnV35m3')">Imagine Dragons - Evolve</button>
+        <button onclick="testAlbum('2noRn2Aes5aoNVsU6iWThc')">Dua Lipa - Future Nostalgia</button>
     </div>
     
     <div id="results"></div>
@@ -107,3 +112,8 @@
     </script>
 </body>
 </html>
+        
+        function testAlbum(albumId) {
+            document.getElementById('albumId').value = albumId;
+            testTracksAPI();
+        }
