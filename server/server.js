@@ -136,7 +136,7 @@ app.use(session({
     cookie: { 
         httpOnly: true, 
         maxAge: 24 * 60 * 60 * 1000,
-        secure: false, // Temporalmente false para debugging
+        secure: false, // Para desarrollo local
         sameSite: 'lax'
     },
 }));
@@ -1118,9 +1118,216 @@ app.get("/album/:id", async (req, res) => {
   }
 });
 
+// Obtener tracks de álbum con preview URLs
+app.get("/album/:id/tracks", async (req, res) => {
+  const albumId = req.params.id;
+  const startTime = Date.now();
+  
+  try {
+    // Validar ID del álbum
+    if (!albumId || albumId.length !== 22) {
+      return res.status(400).json({ 
+        error: "ID de álbum inválido",
+        hasPreview: false,
+        tracks: [],
+        albumId: albumId
+      });
+    }
+
+    const token = await getToken();
+    
+    if (!token) {
+      console.error(`No se pudo obtener token de Spotify para álbum ${albumId}`);
+      return res.status(503).json({ 
+        error: "Servicio de música temporalmente no disponible",
+        hasPreview: false,
+        tracks: [],
+        albumId: albumId,
+        retryable: true
+      });
+    }
+
+    // Realizar petición a Spotify con timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 segundos timeout
+
+    const response = await fetch(
+      `https://api.spotify.com/v1/albums/${albumId}/tracks?limit=50`,
+      { 
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal
+      }
+    );
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorDetails = {
+        status: response.status,
+        statusText: response.statusText,
+        albumId: albumId
+      };
+      
+      console.error(`Spotify API error:`, errorDetails);
+      
+      // Manejar diferentes tipos de errores de Spotify
+      if (response.status === 401) {
+        return res.status(503).json({ 
+          error: "Error de autenticación con el servicio de música",
+          hasPreview: false,
+          tracks: [],
+          albumId: albumId,
+          retryable: true
+        });
+      } else if (response.status === 404) {
+        return res.status(404).json({ 
+          error: "Álbum no encontrado en el servicio de música",
+          hasPreview: false,
+          tracks: [],
+          albumId: albumId,
+          retryable: false
+        });
+      } else if (response.status === 429) {
+        return res.status(429).json({ 
+          error: "Demasiadas solicitudes. Intenta más tarde",
+          hasPreview: false,
+          tracks: [],
+          albumId: albumId,
+          retryable: true,
+          retryAfter: response.headers.get('Retry-After') || 60
+        });
+      } else {
+        return res.status(503).json({ 
+          error: "Error del servicio de música",
+          hasPreview: false,
+          tracks: [],
+          albumId: albumId,
+          retryable: true
+        });
+      }
+    }
+
+    const data = await response.json();
+    
+    if (!data.items || !Array.isArray(data.items)) {
+      console.warn(`Respuesta inesperada de Spotify para álbum ${albumId}:`, data);
+      return res.status(404).json({ 
+        error: "No se encontraron tracks para este álbum",
+        hasPreview: false,
+        tracks: [],
+        albumId: albumId,
+        retryable: false
+      });
+    }
+
+    // Validar y procesar tracks con preview URLs
+    const processedTracks = data.items.map(track => {
+      const validatedPreviewUrl = validatePreviewUrl(track.preview_url);
+      return {
+        id: track.id,
+        name: track.name || 'Track sin nombre',
+        preview_url: validatedPreviewUrl,
+        duration_ms: track.duration_ms || 0,
+        track_number: track.track_number || 0,
+        artists: track.artists ? track.artists.map(artist => ({
+          name: artist.name || 'Artista desconocido',
+          id: artist.id
+        })) : [],
+        available: validatedPreviewUrl !== null
+      };
+    });
+
+    // Filtrar tracks con preview disponible
+    const tracksWithPreview = processedTracks.filter(track => track.available);
+    
+    const result = {
+      tracks: processedTracks,
+      tracksWithPreview: tracksWithPreview,
+      hasPreview: tracksWithPreview.length > 0,
+      totalTracks: processedTracks.length,
+      tracksWithPreviewCount: tracksWithPreview.length,
+      albumId: albumId,
+      processingTime: Date.now() - startTime
+    };
+
+    res.json(result);
+
+  } catch (err) {
+    const processingTime = Date.now() - startTime;
+    
+    // Log detallado del error
+    console.error(`Error crítico obteniendo tracks del álbum ${albumId}:`, {
+      error: err.message,
+      stack: err.stack,
+      albumId: albumId,
+      processingTime: processingTime
+    });
+    
+    // Determinar si el error es recuperable
+    const isNetworkError = err.name === 'AbortError' || err.code === 'ECONNRESET' || 
+                          err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT';
+    
+    res.status(500).json({ 
+      error: isNetworkError ? 
+        "Error de conexión con el servicio de música" : 
+        "Error interno del servidor",
+      hasPreview: false,
+      tracks: [],
+      albumId: albumId,
+      retryable: isNetworkError,
+      processingTime: processingTime
+    });
+  }
+});
+
+// Función auxiliar para validar preview URLs
+function validatePreviewUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return null;
+  }
+  
+  // Validar que sea una URL de Spotify válida
+  const spotifyPreviewPattern = /^https:\/\/p\.scdn\.co\/mp3-preview\//;
+  
+  if (!spotifyPreviewPattern.test(url)) {
+    console.warn(`Invalid preview URL format: ${url}`);
+    return null;
+  }
+  
+  return url;
+}
+
 /* ==============================
    RUTAS DE RESEÑAS
 ============================== */
+
+// Ruta opcional para logging de errores del cliente (para monitoreo)
+app.post("/log-error", (req, res) => {
+  try {
+    const { component, error, level } = req.body;
+    
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      component: component || 'unknown',
+      level: level || 'error',
+      error: error || {},
+      userAgent: req.headers['user-agent'],
+      ip: req.ip || req.connection.remoteAddress,
+      userId: req.session?.userId || 'anonymous'
+    };
+    
+    console.error(`[CLIENT-ERROR] ${component}:`, logEntry);
+    
+    // En producción, aquí podrías enviar a un servicio de monitoreo
+    // como Sentry, LogRocket, etc.
+    
+    res.json({ success: true, logged: true });
+  } catch (err) {
+    console.error("Error al procesar log de cliente:", err);
+    res.status(500).json({ success: false, error: "Error interno del servidor" });
+  }
+});
+
 // Crear reseña
 app.post("/reviews/album/:spotify_id", async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ success: false, error: "No logueado" });

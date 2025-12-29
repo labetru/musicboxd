@@ -2541,6 +2541,10 @@ window.renderAlbumDetailsLogic = async function(spotify_id) {
                         <p class="text-muted">Canciones: ${album.total_tracks}</p>
                     </div>
                 </div>
+                
+                <!-- Reproductor de muestras de audio -->
+                <div id="audioPreviewContainer"></div>
+                
                 <hr>
                 <h5 style="color: #424242 !important;">Canciones:</h5>
                 <ul class="list-group mb-4" id="albumTracksList">
@@ -2610,6 +2614,14 @@ window.renderAlbumDetailsLogic = async function(spotify_id) {
             }
         };
         renderStars(0);
+        
+        // Inicializar reproductor de audio
+        try {
+            const audioPlayer = new AudioPreviewPlayer('audioPreviewContainer', spotify_id);
+            await audioPlayer.initialize();
+        } catch (error) {
+            console.error('Error inicializando AudioPreviewPlayer:', error);
+        }
         
         // Enviar reseña
         document.getElementById("submitReview").onclick = async () => {
