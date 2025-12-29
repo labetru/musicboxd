@@ -1841,6 +1841,335 @@ app.get("/admin/reports/stats", requireAdmin, async (req, res) => {
 });
 
 /* ==============================
+   RUTAS DE LANDING PAGE
+============================== */
+
+// Obtener estadísticas para la landing page - OPTIMIZED
+app.get("/api/landing/stats", async (req, res) => {
+  try {
+    // Optimized single query with proper indexing hints
+    const [statsRows] = await pool.query(`
+      SELECT 
+        SUM(CASE WHEN table_name = 'users' AND is_blocked = FALSE THEN 1 ELSE 0 END) as totalUsers,
+        SUM(CASE WHEN table_name = 'reviews' AND is_hidden = FALSE THEN 1 ELSE 0 END) as totalReviews,
+        COUNT(DISTINCT CASE WHEN table_name = 'reviews' AND is_hidden = FALSE THEN spotify_id END) as totalAlbums
+      FROM (
+        SELECT 'users' as table_name, NULL as is_hidden, is_blocked, NULL as spotify_id FROM users
+        UNION ALL
+        SELECT 'reviews' as table_name, is_hidden, NULL as is_blocked, spotify_id FROM reviews
+      ) combined_stats
+    `);
+    
+    const stats = statsRows[0];
+    
+    // Add cache headers for better performance
+    res.set({
+      'Cache-Control': 'public, max-age=300', // Cache for 5 minutes
+      'ETag': `"stats-${Date.now()}"`,
+      'Vary': 'Accept-Encoding'
+    });
+    
+    res.json({
+      success: true,
+      totalUsers: parseInt(stats.totalUsers) || 0,
+      totalReviews: parseInt(stats.totalReviews) || 0,
+      totalAlbums: parseInt(stats.totalAlbums) || 0,
+      cached: false,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (err) {
+    console.error("Error obteniendo estadísticas de landing page:", err);
+    
+    // Enhanced error handling with fallback values
+    res.status(200).json({
+      success: false,
+      error: "Error obteniendo estadísticas",
+      fallback: true,
+      totalUsers: 0,
+      totalReviews: 0,
+      totalAlbums: 0
+    });
+  }
+});
+
+// Obtener álbumes destacados para la landing page - OPTIMIZED
+app.get("/api/landing/featured-albums", async (req, res) => {
+  try {
+    // Optimized query with proper joins and indexing
+    const [albumRows] = await pool.query(`
+      SELECT 
+        r.spotify_id,
+        ROUND(AVG(r.stars), 1) as averageRating,
+        COUNT(r.id) as reviewCount
+      FROM reviews r
+      INNER JOIN users u ON r.user_id = u.id
+      WHERE r.type = 'album' 
+        AND r.is_hidden = FALSE 
+        AND u.is_blocked = FALSE
+        AND r.spotify_id IS NOT NULL
+      GROUP BY r.spotify_id
+      HAVING reviewCount >= 1
+      ORDER BY averageRating DESC, reviewCount DESC
+      LIMIT 8
+    `);
+    
+    if (albumRows.length === 0) {
+      // Add cache headers even for empty results
+      res.set({
+        'Cache-Control': 'public, max-age=60', // Cache empty results for 1 minute
+        'ETag': `"empty-albums-${Date.now()}"`,
+      });
+      
+      return res.json({
+        success: true,
+        albums: [],
+        message: "No hay álbumes reseñados aún"
+      });
+    }
+    
+    // Get Spotify data for the albums with enhanced error handling
+    let token;
+    try {
+      token = await getToken();
+    } catch (tokenError) {
+      console.error("Error obteniendo token de Spotify:", tokenError);
+      return res.json({
+        success: false,
+        error: "Error de conexión con Spotify",
+        fallback: true,
+        albums: [],
+        message: "Servicio de música temporalmente no disponible"
+      });
+    }
+    
+    if (!token) {
+      console.error("No se pudo obtener token de Spotify para álbumes destacados");
+      return res.json({
+        success: false,
+        error: "Token de Spotify no disponible",
+        fallback: true,
+        albums: [],
+        message: "Servicio de música temporalmente no disponible"
+      });
+    }
+    
+    const spotifyIds = albumRows.map(album => album.spotify_id);
+    const idsString = spotifyIds.join(",");
+    
+    let spotifyData;
+    try {
+      const response = await fetch(
+        `https://api.spotify.com/v1/albums?ids=${idsString}`,
+        { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000 // 10 second timeout
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
+      }
+      
+      spotifyData = await response.json();
+    } catch (spotifyError) {
+      console.error("Error en respuesta de Spotify API para álbumes destacados:", spotifyError);
+      return res.json({
+        success: false,
+        error: "Error obteniendo datos de Spotify",
+        fallback: true,
+        albums: [],
+        message: "Información de álbumes temporalmente no disponible"
+      });
+    }
+    
+    if (!spotifyData.albums) {
+      return res.json({
+        success: false,
+        error: "Respuesta inválida de Spotify",
+        fallback: true,
+        albums: [],
+        message: "Datos de álbumes no disponibles"
+      });
+    }
+    
+    // Combine database stats with Spotify data
+    const featuredAlbums = spotifyData.albums
+      .filter(album => album !== null)
+      .map(album => {
+        const stats = albumRows.find(row => row.spotify_id === album.id);
+        return {
+          id: album.id,
+          name: album.name,
+          artist: album.artists[0]?.name || 'Artista Desconocido',
+          imageUrl: album.images[0]?.url || 'https://placehold.co/300x300/333/fff?text=No+Cover',
+          averageRating: Number(stats.averageRating).toFixed(1),
+          reviewCount: stats.reviewCount
+        };
+      });
+    
+    // Add cache headers for successful results
+    res.set({
+      'Cache-Control': 'public, max-age=600', // Cache for 10 minutes
+      'ETag': `"albums-${featuredAlbums.length}-${Date.now()}"`,
+      'Vary': 'Accept-Encoding'
+    });
+    
+    res.json({
+      success: true,
+      albums: featuredAlbums,
+      message: `${featuredAlbums.length} álbumes destacados encontrados`,
+      cached: false,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (err) {
+    console.error("Error obteniendo álbumes destacados:", err);
+    res.json({
+      success: false,
+      error: "Error interno del servidor",
+      fallback: true,
+      albums: [],
+      message: "Error cargando álbumes destacados"
+    });
+  }
+});
+
+// Obtener imágenes para el carrusel de fondo - OPTIMIZED
+app.get("/api/landing/carousel-images", async (req, res) => {
+  try {
+    // Optimized query with better randomization and caching
+    const [imageRows] = await pool.query(`
+      SELECT DISTINCT r.spotify_id
+      FROM reviews r
+      INNER JOIN users u ON r.user_id = u.id
+      WHERE r.type = 'album' 
+        AND r.is_hidden = FALSE 
+        AND u.is_blocked = FALSE
+        AND r.spotify_id IS NOT NULL
+      ORDER BY RAND()
+      LIMIT 20
+    `);
+    
+    if (imageRows.length === 0) {
+      // Add cache headers for empty results
+      res.set({
+        'Cache-Control': 'public, max-age=120', // Cache empty results for 2 minutes
+        'ETag': `"empty-carousel-${Date.now()}"`,
+      });
+      
+      return res.json({
+        success: true,
+        images: [],
+        message: "No hay álbumes para mostrar en el carrusel"
+      });
+    }
+    
+    // Get Spotify data for the albums with enhanced error handling
+    let token;
+    try {
+      token = await getToken();
+    } catch (tokenError) {
+      console.error("Error obteniendo token de Spotify para carrusel:", tokenError);
+      return res.json({
+        success: false,
+        error: "Error de conexión con Spotify",
+        fallback: true,
+        images: [],
+        message: "Carrusel temporalmente no disponible"
+      });
+    }
+    
+    if (!token) {
+      console.error("No se pudo obtener token de Spotify para carrusel");
+      return res.json({
+        success: false,
+        error: "Token de Spotify no disponible",
+        fallback: true,
+        images: [],
+        message: "Carrusel temporalmente no disponible"
+      });
+    }
+    
+    const spotifyIds = imageRows.map(row => row.spotify_id);
+    const idsString = spotifyIds.join(",");
+    
+    let spotifyData;
+    try {
+      const response = await fetch(
+        `https://api.spotify.com/v1/albums?ids=${idsString}`,
+        { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 8000 // 8 second timeout for carousel (less critical)
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
+      }
+      
+      spotifyData = await response.json();
+    } catch (spotifyError) {
+      console.error("Error en respuesta de Spotify API para carrusel:", spotifyError);
+      return res.json({
+        success: false,
+        error: "Error obteniendo imágenes de Spotify",
+        fallback: true,
+        images: [],
+        message: "Carrusel temporalmente no disponible"
+      });
+    }
+    
+    if (!spotifyData.albums) {
+      return res.json({
+        success: false,
+        error: "Respuesta inválida de Spotify",
+        fallback: true,
+        images: [],
+        message: "Imágenes de carrusel no disponibles"
+      });
+    }
+    
+    // Extract image data for carousel with lazy loading optimization
+    const carouselImages = spotifyData.albums
+      .filter(album => album !== null)
+      .map(album => ({
+        albumId: album.id,
+        imageUrl: album.images[0]?.url || 'https://placehold.co/300x300/333/fff?text=No+Cover',
+        albumName: album.name,
+        artistName: album.artists[0]?.name || 'Artista Desconocido',
+        // Add smaller image URL for lazy loading
+        thumbnailUrl: album.images[2]?.url || album.images[1]?.url || album.images[0]?.url
+      }));
+    
+    // Add cache headers for successful results
+    res.set({
+      'Cache-Control': 'public, max-age=900', // Cache for 15 minutes
+      'ETag': `"carousel-${carouselImages.length}-${Date.now()}"`,
+      'Vary': 'Accept-Encoding'
+    });
+    
+    res.json({
+      success: true,
+      images: carouselImages,
+      message: `${carouselImages.length} imágenes cargadas para el carrusel`,
+      cached: false,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (err) {
+    console.error("Error obteniendo imágenes de carrusel:", err);
+    res.json({
+      success: false,
+      error: "Error interno del servidor",
+      fallback: true,
+      images: [],
+      message: "Error cargando carrusel"
+    });
+  }
+});
+
+/* ==============================
    INICIAR SERVIDOR
 ============================== */
 app.listen(config.server.port, () => {

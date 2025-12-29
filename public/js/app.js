@@ -28,10 +28,10 @@ async function checkSession() {
     // Enhanced error handling for network issues
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
-        // Unauthorized - clear session
-        console.log('Session expired or unauthorized');
+        // Unauthorized - clear session and show landing page
+        console.log('Session expired or unauthorized - showing landing page');
         clearSessionState();
-        showAuth();
+        showLandingPage();
         return;
       } else {
         // Other server errors - retry logic could be added here
@@ -41,6 +41,8 @@ async function checkSession() {
     
     const data = await res.json();
     if (data.loggedIn) {
+        // User is authenticated - show main application
+        console.log('User authenticated - showing main application');
         currentUserId = data.userId;
         currentUsername = data.username;
         if (userDisplayEl) userDisplayEl.textContent = data.username;
@@ -70,11 +72,13 @@ async function checkSession() {
         // Mostrar botón de admin si es administrador
         showAdminButton(data.role === 'admin');
         
+        // Show main application for authenticated users
         showApp();
     } else {
-        // Limpiar estado cuando no hay sesión válida
+        // User is not authenticated - show landing page
+        console.log('User not authenticated - showing landing page');
         clearSessionState();
-        showAuth();
+        showLandingPage();
     }
   } catch (err) {
     console.error("Error al verificar sesión:", err);
@@ -85,13 +89,13 @@ async function checkSession() {
       // Keep current session state if it exists, just show a warning
       if (!currentUserId) {
         clearSessionState();
-        showAuth();
+        showLandingPage();
       }
       // Could show a network error indicator here
     } else {
-      // Other errors - clear session
+      // Other errors - clear session and show landing page
       clearSessionState();
-      showAuth();
+      showLandingPage();
     }
   }
 }
@@ -129,7 +133,7 @@ function updateNavbarProfilePicture(imageUrl) {
 // MOSTRAR / OCULTAR PANELES
 // ========================
 function showAuth() {
-  console.log("Mostrando página de login");
+  console.log("Showing authentication page");
   
   // Agregar clase para prevenir scroll y ocultar contenido
   document.body.classList.add('auth-mode');
@@ -143,6 +147,15 @@ function showAuth() {
   document.body.style.top = '0';
   document.body.style.left = '0';
   
+  // Ocultar landing page si está visible
+  const landingContainer = document.getElementById("landingContainer");
+  if (landingContainer) {
+    landingContainer.style.display = "none";
+    landingContainer.style.visibility = "hidden";
+    landingContainer.style.opacity = "0";
+    landingContainer.style.zIndex = "-1";
+  }
+  
   // Mostrar auth container con todos los estilos necesarios
   const authContainer = document.getElementById("authContainer");
   authContainer.style.display = "flex";
@@ -150,7 +163,7 @@ function showAuth() {
   authContainer.style.opacity = "1";
   authContainer.style.zIndex = "9999";
   
-  // Ocultar todos los elementos de la aplicación
+  // Ocultar todos los elementos de la aplicación principal
   document.getElementById("navbar").style.display = "none";
   document.getElementById("searchContainer").style.display = "none";
   document.getElementById("albumFeed").style.display = "none";
@@ -166,7 +179,7 @@ function showAuth() {
   if (loginPassword) loginPassword.value = '';
   if (messageDiv) messageDiv.innerHTML = '';
   
-  console.log("Login page displayed successfully");
+  console.log("Authentication page displayed successfully");
 }
 
 // Función más robusta para forzar el regreso al login
@@ -204,6 +217,8 @@ window.showAuth = showAuth;
 window.forceShowAuth = forceShowAuth;
 
 function showApp() {
+  console.log("Showing main application");
+  
   // Quitar clase auth-mode para permitir scroll normal
   document.body.classList.remove('auth-mode');
   document.documentElement.classList.remove('auth-mode');
@@ -216,12 +231,21 @@ function showApp() {
   document.body.style.top = '';
   document.body.style.left = '';
   
-  // Ocultar auth container completamente
+  // Ocultar auth container y landing page completamente
   const authContainer = document.getElementById("authContainer");
+  const landingContainer = document.getElementById("landingContainer");
+  
   authContainer.style.display = "none";
   authContainer.style.visibility = "hidden";
   authContainer.style.opacity = "0";
   authContainer.style.zIndex = "-1";
+  
+  if (landingContainer) {
+    landingContainer.style.display = "none";
+    landingContainer.style.visibility = "hidden";
+    landingContainer.style.opacity = "0";
+    landingContainer.style.zIndex = "-1";
+  }
   
   // Mostrar elementos de la aplicación
   document.getElementById("navbar").style.display = "block";
@@ -269,6 +293,759 @@ function showApp() {
     document.getElementById("randomReviewsSection").style.display = "none";
   }
 }
+
+// ========================
+// LANDING PAGE FUNCTIONALITY
+// ========================
+async function showLandingPage() {
+  console.log("Showing landing page");
+  
+  // Agregar clase para prevenir scroll y ocultar contenido
+  document.body.classList.add('auth-mode');
+  document.documentElement.classList.add('auth-mode');
+  
+  // Forzar estilos directamente
+  document.body.style.overflow = 'hidden';
+  document.body.style.height = '100vh';
+  document.body.style.position = 'fixed';
+  document.body.style.width = '100vw';
+  document.body.style.top = '0';
+  document.body.style.left = '0';
+  
+  // Ocultar auth container y elementos de la aplicación
+  const authContainer = document.getElementById("authContainer");
+  const landingContainer = document.getElementById("landingContainer");
+  
+  authContainer.style.display = "none";
+  authContainer.style.visibility = "hidden";
+  authContainer.style.opacity = "0";
+  authContainer.style.zIndex = "-1";
+  
+  // Mostrar landing container con todos los estilos necesarios
+  if (landingContainer) {
+    landingContainer.style.display = "block";
+    landingContainer.style.visibility = "visible";
+    landingContainer.style.opacity = "1";
+    landingContainer.style.zIndex = "9999";
+  }
+  
+  // Ocultar todos los elementos de la aplicación principal
+  document.getElementById("navbar").style.display = "none";
+  document.getElementById("searchContainer").style.display = "none";
+  document.getElementById("albumFeed").style.display = "none";
+  document.getElementById("albumDetailContainer").style.display = "none";
+  if (profileContainer) profileContainer.style.display = "none";
+  
+  // Cargar contenido de la landing page
+  await loadLandingPageContent();
+  
+  console.log("Landing page displayed successfully");
+}
+
+async function loadLandingPageContent() {
+  console.log("Cargando contenido de la landing page");
+  
+  // Track loading states
+  const loadingStates = {
+    stats: false,
+    albums: false,
+    carousel: false
+  };
+  
+  try {
+    // Load all content in parallel with individual error handling
+    const loadingPromises = [
+      loadLandingStats().then(() => { loadingStates.stats = true; }).catch(err => {
+        console.error("Stats loading failed:", err);
+        loadingStates.stats = false;
+      }),
+      
+      loadFeaturedAlbums().then(() => { loadingStates.albums = true; }).catch(err => {
+        console.error("Albums loading failed:", err);
+        loadingStates.albums = false;
+      }),
+      
+      loadBackgroundCarousel().then(() => { loadingStates.carousel = true; }).catch(err => {
+        console.error("Carousel loading failed:", err);
+        loadingStates.carousel = false;
+      })
+    ];
+    
+    // Wait for all promises to settle (not fail)
+    await Promise.allSettled(loadingPromises);
+    
+    // Check if any critical components failed
+    const criticalFailures = !loadingStates.stats || !loadingStates.albums;
+    
+    if (criticalFailures) {
+      console.warn("Algunos componentes críticos fallaron al cargar");
+      
+      // Check if it's an empty database state
+      if (!loadingStates.stats && !loadingStates.albums) {
+        handleEmptyDatabaseState();
+      } else {
+        showLandingNotification("Algunos elementos no se pudieron cargar completamente", "warning", 5000);
+      }
+    } else {
+      console.log("Contenido de landing page cargado exitosamente");
+      showLandingNotification("¡Bienvenido a MusicBoxd!", "success", 3000);
+    }
+    
+    // Carousel failure is not critical
+    if (!loadingStates.carousel) {
+      console.log("Carrusel no disponible, continuando sin él");
+    }
+    
+  } catch (error) {
+    console.error("Error crítico cargando contenido de landing page:", error);
+    
+    // Show fallback content
+    showDefaultLandingContent();
+    showLandingNotification("Error cargando la página. Mostrando contenido básico", "error", 6000);
+  }
+}
+
+async function loadLandingStats() {
+  const statsElements = {
+    totalUsers: document.getElementById('totalUsersCount'),
+    totalReviews: document.getElementById('totalReviewsCount'),
+    totalAlbums: document.getElementById('totalAlbumsCount')
+  };
+  
+  // Show skeleton loading state
+  showStatsSkeletonState(statsElements);
+  
+  try {
+    console.log("Cargando estadísticas de la plataforma");
+    
+    const response = await fetch(`${API_BASE_URL}/api/landing/stats`, {
+      credentials: 'include',
+      timeout: 10000 // 10 second timeout
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log("Estadísticas recibidas:", data);
+    
+    // Handle both success and fallback responses
+    if (data.success || data.fallback) {
+      // Update elements with animation
+      updateStatWithAnimation('totalUsersCount', data.totalUsers || 0);
+      updateStatWithAnimation('totalReviewsCount', data.totalReviews || 0);
+      updateStatWithAnimation('totalAlbumsCount', data.totalAlbums || 0);
+      
+      // Show warning if using fallback data
+      if (data.fallback) {
+        console.warn("Usando datos de respaldo para estadísticas:", data.error);
+        showLandingNotification("Estadísticas cargadas con datos básicos", "warning", 3000);
+      }
+    } else {
+      throw new Error(data.error || "Error desconocido");
+    }
+    
+  } catch (error) {
+    console.error("Error cargando estadísticas:", error);
+    
+    // Show error state with retry option
+    showStatsErrorState(statsElements, error.message, () => loadLandingStats());
+    
+    // Show user-friendly notification
+    showLandingNotification("Error cargando estadísticas de la plataforma", "error", 5000);
+  }
+}
+
+function showStatsSkeletonState(elements) {
+  Object.values(elements).forEach(element => {
+    if (element) {
+      element.parentElement.classList.add('loading-overlay');
+      element.textContent = '';
+    }
+  });
+}
+
+function showStatsErrorState(elements, errorMessage, retryCallback) {
+  Object.values(elements).forEach(element => {
+    if (element) {
+      element.parentElement.classList.remove('loading-overlay');
+      element.textContent = '0';
+    }
+  });
+  
+  // Show error notification with retry option
+  const errorHtml = `
+    <div class="error-state mt-3">
+      <div class="error-state-icon">⚠️</div>
+      <div class="error-state-message">Error cargando estadísticas</div>
+      <button class="error-state-retry" onclick="(${retryCallback.toString()})()">
+        Reintentar
+      </button>
+    </div>
+  `;
+  
+  // Find a suitable container to show the error
+  const statsContainer = document.querySelector('.landing-stats-container') || 
+                        document.querySelector('#landingStatsRow');
+  if (statsContainer) {
+    const existingError = statsContainer.querySelector('.error-state');
+    if (existingError) existingError.remove();
+    
+    statsContainer.insertAdjacentHTML('afterend', errorHtml);
+    
+    // Auto-remove error after 10 seconds
+    setTimeout(() => {
+      const errorElement = document.querySelector('.error-state');
+      if (errorElement) errorElement.remove();
+    }, 10000);
+  }
+}
+
+function updateStatWithAnimation(elementId, value) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  
+  // Animación de conteo desde 0 hasta el valor final
+  const duration = 1500; // 1.5 segundos
+  const startTime = Date.now();
+  const startValue = 0;
+  const endValue = parseInt(value) || 0;
+  
+  function animate() {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    
+    // Usar easing para una animación más suave
+    const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+    const currentValue = Math.floor(startValue + (endValue - startValue) * easeOutQuart);
+    
+    element.textContent = currentValue.toLocaleString();
+    
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      element.textContent = endValue.toLocaleString();
+    }
+  }
+  
+  // Iniciar animación después de un pequeño delay
+  setTimeout(() => {
+    requestAnimationFrame(animate);
+  }, 200);
+}
+
+async function loadFeaturedAlbums() {
+  const container = document.getElementById('landingFeaturedAlbums');
+  if (!container) return;
+  
+  // Show skeleton loading state
+  showAlbumsSkeletonState(container);
+  
+  try {
+    console.log("Cargando álbumes destacados");
+    
+    const response = await fetch(`${API_BASE_URL}/api/landing/featured-albums`, {
+      credentials: 'include',
+      timeout: 15000 // 15 second timeout for albums
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log("Respuesta de álbumes destacados:", data);
+    
+    // Handle both success and fallback responses
+    if (data.success) {
+      const albums = data.albums || [];
+      
+      if (albums.length === 0) {
+        showAlbumsEmptyState(container, data.message || "¡Sé el primero en reseñar un álbum!");
+        return;
+      }
+      
+      renderFeaturedAlbums(container, albums);
+      
+    } else if (data.fallback) {
+      // Show error state with fallback message
+      showAlbumsErrorState(container, data.message || "Álbumes temporalmente no disponibles", () => loadFeaturedAlbums());
+      showLandingNotification("Error cargando álbumes destacados", "warning", 4000);
+      
+    } else {
+      throw new Error(data.error || "Error desconocido");
+    }
+    
+  } catch (error) {
+    console.error("Error cargando álbumes destacados:", error);
+    
+    // Show error state with retry option
+    showAlbumsErrorState(container, "Error cargando álbumes destacados", () => loadFeaturedAlbums());
+    showLandingNotification("Error de conexión cargando álbumes", "error", 5000);
+  }
+}
+
+function showAlbumsSkeletonState(container) {
+  let skeletonHTML = '';
+  
+  // Create 8 skeleton cards
+  for (let i = 0; i < 8; i++) {
+    skeletonHTML += `
+      <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+        <div class="skeleton-album-card">
+          <div class="skeleton skeleton-album-image"></div>
+          <div class="skeleton skeleton-album-title"></div>
+          <div class="skeleton skeleton-album-artist"></div>
+          <div class="skeleton skeleton-album-rating"></div>
+        </div>
+      </div>
+    `;
+  }
+  
+  container.innerHTML = skeletonHTML;
+}
+
+function showAlbumsEmptyState(container, message) {
+  container.innerHTML = `
+    <div class="col-12">
+      <div class="empty-state">
+        <div class="empty-state-icon">🎵</div>
+        <div class="empty-state-message">${message}</div>
+        <div class="empty-state-subtitle">Los álbumes aparecerán aquí cuando los usuarios empiecen a reseñar</div>
+      </div>
+    </div>
+  `;
+}
+
+function showAlbumsErrorState(container, message, retryCallback) {
+  container.innerHTML = `
+    <div class="col-12">
+      <div class="error-state">
+        <div class="error-state-icon">❌</div>
+        <div class="error-state-message">${message}</div>
+        <button class="error-state-retry" onclick="(${retryCallback.toString()})()">
+          Reintentar
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderFeaturedAlbums(container, albums) {
+  // Mostrar hasta 8 álbumes en una cuadrícula responsive
+  const albumsToShow = albums.slice(0, 8);
+  let albumsHTML = '';
+  
+  albumsToShow.forEach((album, index) => {
+    const stars = "★".repeat(Math.round(album.averageRating || 0)) + 
+                 "☆".repeat(5 - Math.round(album.averageRating || 0));
+    
+    // Enhanced accessibility attributes
+    const ariaLabel = `Álbum ${album.name} por ${album.artist}, calificación ${album.averageRating} de 5 estrellas con ${album.reviewCount} reseñas`;
+    
+    albumsHTML += `
+      <div class="col-lg-3 col-md-4 col-sm-6 mb-4" style="animation-delay: ${index * 0.1}s">
+        <div class="featured-album-card h-100 p-3 rounded shadow-lg" 
+             style="cursor: pointer; transition: all 0.3s ease;"
+             onclick="navigateToLogin()"
+             role="button"
+             tabindex="0"
+             aria-label="${ariaLabel}"
+             onkeydown="handleAlbumCardKeydown(event)">
+          <img src="${album.imageUrl}" 
+               alt="Portada del álbum ${album.name} por ${album.artist}" 
+               class="rounded mb-3"
+               style="width: 100%; height: 150px; object-fit: cover;"
+               loading="lazy"
+               onerror="handleAlbumImageError(this)">
+          <h6 class="text-white mb-2 text-truncate" 
+              title="${album.name}"
+              aria-label="Nombre del álbum: ${album.name}">
+            ${album.name}
+          </h6>
+          <small class="text-white-50 d-block mb-2 text-truncate" 
+                 title="${album.artist}"
+                 aria-label="Artista: ${album.artist}">
+            ${album.artist}
+          </small>
+          <div class="featured-album-rating" 
+               role="img" 
+               aria-label="Calificación: ${album.averageRating} de 5 estrellas">
+            <span class="text-warning" aria-hidden="true">${stars}</span>
+            <small class="text-white-50 ms-2" aria-label="${album.reviewCount} reseñas">
+              (${album.reviewCount || 0})
+            </small>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  
+  container.innerHTML = albumsHTML;
+  
+  // Agregar animación de entrada
+  setTimeout(() => {
+    const cards = container.querySelectorAll('.featured-album-card');
+    cards.forEach((card, index) => {
+      setTimeout(() => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.animation = 'fadeInUp 0.6s ease forwards';
+      }, index * 100);
+    });
+  }, 500);
+}
+
+// Handle keyboard navigation for album cards
+function handleAlbumCardKeydown(event) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    navigateToLogin();
+  }
+}
+
+// Enhanced image error handling for album covers
+function handleAlbumImageError(imgElement) {
+  console.log('Album image failed to load, using placeholder');
+  imgElement.src = 'https://placehold.co/300x300/525252/E0E0E0?text=♪';
+  imgElement.style.opacity = '0.7';
+  imgElement.style.filter = 'grayscale(20%)';
+}
+
+async function loadBackgroundCarousel() {
+  const carousel = document.getElementById('backgroundCarousel');
+  if (!carousel) return;
+  
+  try {
+    console.log("Cargando carrusel de fondo");
+    
+    const response = await fetch(`${API_BASE_URL}/api/landing/carousel-images`, {
+      credentials: 'include',
+      timeout: 12000 // 12 second timeout for carousel
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log("Respuesta de carrusel:", data);
+    
+    // Handle both success and fallback responses
+    if (data.success) {
+      const images = data.images || [];
+      
+      if (images.length === 0) {
+        console.log("No hay imágenes para el carrusel, continuando sin carrusel");
+        return;
+      }
+      
+      renderBackgroundCarousel(carousel, images);
+      
+    } else if (data.fallback) {
+      // Carousel is optional, just log the issue
+      console.warn("Carrusel no disponible:", data.message);
+      return;
+      
+    } else {
+      throw new Error(data.error || "Error desconocido");
+    }
+    
+  } catch (error) {
+    console.error("Error cargando carrusel de fondo:", error);
+    // Carousel is optional, don't show error to user
+    // Just continue without carousel
+    return;
+  }
+}
+
+function renderBackgroundCarousel(carousel, images) {
+  // Crear elementos de imagen para el carrusel con lazy loading
+  let carouselHTML = '';
+  const imagesToShow = images.slice(0, 20); // Máximo 20 imágenes
+  
+  imagesToShow.forEach((image, index) => {
+    const delay = Math.random() * 10; // Delay aleatorio para efecto más natural
+    const duration = 15 + Math.random() * 10; // Duración aleatoria entre 15-25s
+    const opacity = 0.1 + Math.random() * 0.2; // Opacidad aleatoria entre 0.1-0.3
+    
+    // Use thumbnail for initial load, then lazy load full image
+    const thumbnailUrl = image.thumbnailUrl || image.imageUrl;
+    
+    carouselHTML += `
+      <div class="carousel-bg-image" 
+           data-src="${image.imageUrl}"
+           data-thumbnail="${thumbnailUrl}"
+           data-album-name="${image.albumName}"
+           data-artist-name="${image.artistName}"
+           style="
+             background-image: url('${thumbnailUrl}');
+             animation-delay: ${delay}s;
+             animation-duration: ${duration}s;
+             opacity: ${opacity};
+             left: ${Math.random() * 80}%;
+             top: ${Math.random() * 80}%;
+           "
+           title="${image.albumName} - ${image.artistName}"
+           aria-label="Imagen de álbum: ${image.albumName} por ${image.artistName}"
+           role="img"
+           loading="lazy"
+           onerror="handleCarouselImageError(this)">
+      </div>
+    `;
+  });
+  
+  carousel.innerHTML = carouselHTML;
+  
+  // Iniciar animación del carrusel
+  startCarouselAnimation();
+  
+  // Implement lazy loading for carousel images
+  implementCarouselLazyLoading();
+}
+
+// Enhanced error handling for carousel images
+function handleCarouselImageError(element) {
+  console.log('Carousel image failed to load, hiding element');
+  element.style.display = 'none';
+  element.setAttribute('aria-hidden', 'true');
+}
+
+// Implement lazy loading for carousel images
+function implementCarouselLazyLoading() {
+  const carouselImages = document.querySelectorAll('.carousel-bg-image[data-src]');
+  
+  // Use Intersection Observer for efficient lazy loading
+  const imageObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        const fullImageUrl = img.dataset.src;
+        
+        // Preload the full resolution image
+        const preloadImg = new Image();
+        preloadImg.onload = () => {
+          // Once loaded, update the background image
+          img.style.backgroundImage = `url('${fullImageUrl}')`;
+          img.removeAttribute('data-src');
+          img.classList.add('lazy-loaded');
+        };
+        preloadImg.onerror = () => {
+          console.warn('Failed to lazy load carousel image:', fullImageUrl);
+          // Keep using thumbnail
+          img.classList.add('lazy-error');
+        };
+        preloadImg.src = fullImageUrl;
+        
+        // Stop observing this image
+        observer.unobserve(img);
+      }
+    });
+  }, {
+    // Load images when they're 50px away from viewport
+    rootMargin: '50px',
+    threshold: 0.01
+  });
+  
+  // Start observing all carousel images
+  carouselImages.forEach(img => {
+    imageObserver.observe(img);
+  });
+}
+
+function startCarouselAnimation() {
+  const images = document.querySelectorAll('.carousel-bg-image');
+  
+  images.forEach((image, index) => {
+    // Agregar animación CSS si no existe
+    if (!document.getElementById('carousel-animations')) {
+      const style = document.createElement('style');
+      style.id = 'carousel-animations';
+      style.textContent = `
+        .carousel-bg-image {
+          position: absolute;
+          width: 200px;
+          height: 200px;
+          background-size: cover;
+          background-position: center;
+          border-radius: 15px;
+          animation: floatAndFade 20s infinite linear;
+          pointer-events: none;
+        }
+        
+        @keyframes floatAndFade {
+          0% {
+            transform: translateY(100vh) rotate(0deg) scale(0.8);
+            opacity: 0;
+          }
+          10% {
+            opacity: var(--image-opacity, 0.2);
+          }
+          90% {
+            opacity: var(--image-opacity, 0.2);
+          }
+          100% {
+            transform: translateY(-200px) rotate(360deg) scale(1.2);
+            opacity: 0;
+          }
+        }
+        
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    // Reiniciar animación periódicamente para mantener el movimiento
+    setInterval(() => {
+      const newLeft = Math.random() * 80;
+      const newTop = Math.random() * 80;
+      image.style.left = `${newLeft}%`;
+      image.style.top = `${newTop}%`;
+    }, 20000 + Math.random() * 10000); // Entre 20-30 segundos
+  });
+}
+
+function showDefaultLandingContent() {
+  console.log("Mostrando contenido por defecto de landing page");
+  
+  // Estadísticas por defecto
+  updateStatWithAnimation('totalUsersCount', 0);
+  updateStatWithAnimation('totalReviewsCount', 0);
+  updateStatWithAnimation('totalAlbumsCount', 0);
+  
+  // Mensaje por defecto para álbumes
+  const container = document.getElementById('landingFeaturedAlbums');
+  if (container) {
+    showAlbumsEmptyState(container, "¡Únete y sé el primero en reseñar!");
+  }
+}
+
+// Enhanced notification system for landing page
+function showLandingNotification(message, type = 'info', duration = 4000) {
+  // Create notification container if it doesn't exist
+  let notificationContainer = document.getElementById('landingNotifications');
+  if (!notificationContainer) {
+    notificationContainer = document.createElement('div');
+    notificationContainer.id = 'landingNotifications';
+    notificationContainer.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10001;
+      max-width: 350px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(notificationContainer);
+  }
+  
+  // Create notification element
+  const notification = document.createElement('div');
+  notification.className = `landing-notification landing-notification-${type}`;
+  notification.style.cssText = `
+    padding: 12px 20px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    color: white;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateX(100%);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    pointer-events: auto;
+    font-size: 0.9rem;
+    line-height: 1.4;
+  `;
+  
+  // Set background color based on type
+  const colors = {
+    'success': 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+    'error': 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)',
+    'warning': 'linear-gradient(135deg, #ffc107 0%, #e0a800 100%)',
+    'info': 'linear-gradient(135deg, #17a2b8 0%, #138496 100%)'
+  };
+  
+  notification.style.background = colors[type] || colors['info'];
+  if (type === 'warning') {
+    notification.style.color = '#212529';
+  }
+  
+  // Add icon based on type
+  const icons = {
+    'success': '✅',
+    'error': '❌',
+    'warning': '⚠️',
+    'info': 'ℹ️'
+  };
+  
+  notification.innerHTML = `
+    <span style="margin-right: 8px;">${icons[type] || icons['info']}</span>
+    ${message}
+  `;
+  
+  // Add to container
+  notificationContainer.appendChild(notification);
+  
+  // Animate in
+  setTimeout(() => {
+    notification.style.transform = 'translateX(0)';
+  }, 100);
+  
+  // Auto-remove after duration
+  setTimeout(() => {
+    notification.style.transform = 'translateX(100%)';
+    notification.style.opacity = '0';
+    
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 300);
+  }, duration);
+}
+
+// Enhanced error handling for database empty state
+function handleEmptyDatabaseState() {
+  console.log("Detectado estado de base de datos vacía");
+  
+  // Show appropriate empty states for all sections
+  const statsElements = {
+    totalUsers: document.getElementById('totalUsersCount'),
+    totalReviews: document.getElementById('totalReviewsCount'),
+    totalAlbums: document.getElementById('totalAlbumsCount')
+  };
+  
+  // Update stats to show zero with animation
+  updateStatWithAnimation('totalUsersCount', 0);
+  updateStatWithAnimation('totalReviewsCount', 0);
+  updateStatWithAnimation('totalAlbumsCount', 0);
+  
+  // Show empty state for albums
+  const albumsContainer = document.getElementById('landingFeaturedAlbums');
+  if (albumsContainer) {
+    showAlbumsEmptyState(albumsContainer, "¡Sé el primero en unirte y reseñar álbumes!");
+  }
+  
+  // Show informative notification
+  showLandingNotification("¡Bienvenido a MusicBoxd! Sé el primero en crear una cuenta y reseñar álbumes", "info", 6000);
+}
+
+function navigateToLogin() {
+  console.log("Navigating from landing page to authentication system");
+  showAuth();
+}
+
+// Función global para navegación desde landing page
+window.navigateToLogin = navigateToLogin;
+window.handleAlbumCardKeydown = handleAlbumCardKeydown;
 
 // ========================
 // REGISTRO - Movido a DOMContentLoaded
@@ -601,6 +1378,15 @@ document.addEventListener("DOMContentLoaded", () => {
         photoFileInput.addEventListener('change', uploadProfilePicture);
     }
 
+    // Event listener para botón de login en landing page
+    const landingLoginBtn = document.getElementById("landingLoginBtn");
+    if (landingLoginBtn) {
+        landingLoginBtn.addEventListener("click", () => {
+            console.log("Landing login button clicked");
+            navigateToLogin();
+        });
+    }
+
     // Event listeners para login y registro
     const loginBtn = document.getElementById("loginBtn");
     const registerBtn = document.getElementById("registerBtn");
@@ -640,6 +1426,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     // Mostrar botón de admin si es administrador
                     showAdminButton(data.role === 'admin');
                     
+                    // Redirect to main application after successful login
                     showApp();
                 } else {
                     console.log(data.error);
@@ -719,10 +1506,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 profilePictureEl.src = getProfileImageUrl(null, '100');
             }
             
-            // Forzar regreso a login con timeout para asegurar que se ejecute
+            // Redirigir a landing page después del logout
             setTimeout(() => {
-                console.log("Executing showAuth after logout");
-                forceShowAuth();
+                console.log("Redirecting to landing page after logout");
+                showLandingPage();
             }, 100);
         });
     }
@@ -1849,7 +2636,10 @@ window.renderAlbumDetailsLogic = async function(spotify_id) {
 // FUNCIONES GLOBALES
 // Funciones globales necesarias para el HTML
 window.showApp = showApp;
+window.showLandingPage = showLandingPage;
 window.handleImageError = handleImageError;
+window.handleAlbumImageError = handleAlbumImageError;
+window.handleCarouselImageError = handleCarouselImageError;
 window.renderAlbumDetailsLogic = renderAlbumDetailsLogic;
 
 // ========================
@@ -2020,18 +2810,8 @@ function testScroll() {
     console.log('=== END TEST ===');
 }
 
-// Función de prueba para scroll manual
-function testScroll() {
-    const container = document.getElementById("topAlbumsRow");
-    if (container) {
-        console.log('Testing manual scroll...');
-        container.scrollLeft += 200;
-        console.log('New scrollLeft:', container.scrollLeft);
-    }
-}
-
-// Hacer la función disponible globalmente para testing
-window.testScroll = testScroll;
+// Función de prueba para scroll manual (integrated into main testScroll function above)
+// window.testScroll = testScroll; // Already declared above
 
 // Nueva función de scroll simplificada
 function scrollCarousel(direction) {
@@ -2164,9 +2944,11 @@ function updateCarouselArrows() {
 // ========================
 // INICIALIZACIÓN
 // ========================
-// Inicializar con modo auth por defecto
+// Inicializar con modo auth por defecto y verificar sesión para routing condicional
 document.body.classList.add('auth-mode');
 document.documentElement.classList.add('auth-mode');
+
+// Perform initial session check to determine routing
 checkSession();
 
 // Verificar sesión periódicamente para mantener sincronización
