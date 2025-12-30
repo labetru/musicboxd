@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "node server/server.js",
+    "setup-social": "node scripts/setup-social-features.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

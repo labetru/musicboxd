@@ -15,8 +15,11 @@ CREATE TABLE users (
   blocked_reason TEXT NULL,
   blocked_at TIMESTAMP NULL,
   blocked_by INT NULL,
+  followers_count INT DEFAULT 0,
+  following_count INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (blocked_by) REFERENCES users(id) ON DELETE SET NULL
+  FOREIGN KEY (blocked_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_followers_count (followers_count)
 );
 
 -- Tabla de reseñas
@@ -68,6 +71,36 @@ CREATE TABLE reports (
 -- Para generar un nuevo hash: node scripts/create-admin.js tu_nueva_contraseña
 INSERT INTO users (username, email, password, role) VALUES 
 ('admin', 'admin@musicboxd.com', '$2b$10$rOvHPGkwMkMZOjNJjqhuWOQQQQQQQQQQQQQQQQQQQQQQQQQQQ', 'admin');
+
+-- Tabla de seguimientos entre usuarios
+CREATE TABLE user_follows (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  follower_id INT NOT NULL,
+  following_id INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (following_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_follow (follower_id, following_id),
+  INDEX idx_follower (follower_id),
+  INDEX idx_following (following_id),
+  CONSTRAINT chk_no_self_follow CHECK (follower_id != following_id)
+);
+
+-- Tabla de notificaciones
+CREATE TABLE notifications (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  type ENUM('new_review') NOT NULL,
+  related_user_id INT NOT NULL,
+  related_review_id INT NOT NULL,
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (related_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (related_review_id) REFERENCES reviews(id) ON DELETE CASCADE,
+  INDEX idx_user_unread (user_id, is_read),
+  INDEX idx_created_at (created_at)
+);
 
 -- Datos de ejemplo (opcional)
 -- INSERT INTO users (username, email, password) VALUES 
