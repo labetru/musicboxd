@@ -2967,28 +2967,28 @@ const notificationSystem = {
         
         this.notifications.forEach(notification => {
             const isUnread = !notification.is_read;
-            const timeAgo = this.formatTimeAgo(notification.created_at);
-            const stars = "★".repeat(notification.stars || 0);
+            const timeAgo = this.formatTimeAgo(notification.createdAt);
+            const stars = "★".repeat(notification.review.stars || 0);
             
             notificationsHTML += `
                 <div class="notification-item ${isUnread ? 'unread' : ''}" 
                      data-notification-id="${notification.id}"
-                     onclick="notificationSystem.handleNotificationClick(${notification.id}, '${notification.spotify_id}')">
+                     onclick="notificationSystem.handleNotificationClick(${notification.id}, '${notification.review.spotifyId}')">
                     <div class="notification-content">
-                        <img src="${this.getProfileImageUrl(notification.related_user_profile_pic)}" 
-                             alt="${notification.related_user_username}" 
+                        <img src="${this.getProfileImageUrl(notification.relatedUser.profilePicUrl)}" 
+                             alt="${notification.relatedUser.username}" 
                              class="notification-avatar"
                              onerror="handleImageError(this, '40')">
                         <div class="notification-details">
                             <div class="notification-text">
-                                <strong>${notification.related_user_username}</strong> 
+                                <strong>${notification.relatedUser.username}</strong> 
                                 reseñó un álbum
                             </div>
                             <div class="notification-album">
-                                <img src="${notification.album_image_url || '/icons/logotipo.jpg'}" 
-                                     alt="${notification.album_name}"
+                                <img src="${notification.album.coverUrl || '/icons/logotipo.jpg'}" 
+                                     alt="${notification.album.name}"
                                      onerror="this.src='/icons/logotipo.jpg'">
-                                <span>${notification.album_name} - ${notification.artist_name}</span>
+                                <span>${notification.album.name} - ${notification.album.artist}</span>
                                 <span class="notification-rating">${stars}</span>
                             </div>
                             <div class="notification-time">${timeAgo}</div>
@@ -3503,6 +3503,14 @@ document.addEventListener('DOMContentLoaded', function() {
 function enhanceNewContent(element) {
     if (window.clickableUserElements && window.clickableUserElements.initialized) {
         window.clickableUserElements.enhanceSpecificElement(element);
+    } else {
+        // If not initialized yet, try to initialize and then enhance
+        setTimeout(() => {
+            if (window.profileViewer && window.clickableUserElements) {
+                window.clickableUserElements.initialize(window.profileViewer);
+                window.clickableUserElements.enhanceSpecificElement(element);
+            }
+        }, 100);
     }
 }
 

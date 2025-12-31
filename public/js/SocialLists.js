@@ -28,15 +28,7 @@ class SocialLists {
                     <div class="modal-content">
                         <div class="modal-header">
                             <h5 class="modal-title" id="socialListsModalLabel">Lista Social</h5>
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" id="includeStatsToggle">
-                                    <label class="form-check-label" for="includeStatsToggle">
-                                        <small>Mostrar estadísticas</small>
-                                    </label>
-                                </div>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-                            </div>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                         </div>
                         <div class="modal-body">
                             <!-- Loading State -->
@@ -103,10 +95,6 @@ class SocialLists {
                             </div>
                         </div>
                         <div class="modal-footer">
-                            <small class="text-muted me-auto">
-                                <i class="fas fa-info-circle me-1"></i>
-                                Los usuarios se cargan automáticamente al hacer scroll
-                            </small>
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
                         </div>
                     </div>
@@ -123,16 +111,6 @@ class SocialLists {
         if (modal) {
             modal.addEventListener('hidden.bs.modal', () => {
                 this.resetState();
-            });
-        }
-
-        // Stats toggle listener
-        const statsToggle = document.getElementById('includeStatsToggle');
-        if (statsToggle) {
-            statsToggle.addEventListener('change', () => {
-                if (this.lazyLoader) {
-                    this.lazyLoader.toggleStats();
-                }
             });
         }
     }
@@ -216,7 +194,7 @@ class SocialLists {
             apiEndpoint: `${API_BASE_URL}/api/users/${this.currentUserId}/${this.currentList}`,
             itemRenderer: this.createItemRenderer(),
             pageSize: 20, // Optimized page size
-            includeStats: statsToggle ? statsToggle.checked : false,
+            includeStats: false, // Always false since we removed the toggle
             autoLoad: true
         });
 
