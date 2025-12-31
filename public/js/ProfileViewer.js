@@ -315,14 +315,14 @@ class ProfileViewer {
                      onclick="window.renderAlbumDetailsLogic('${review.spotifyId}')">
                     <div class="row align-items-center">
                         <div class="col-auto">
-                            <img src="${review.albumCoverUrl}" 
-                                 alt="Portada de ${review.albumName}" 
+                            <img src="${review.album.coverUrl}" 
+                                 alt="Portada de ${review.album.name}" 
                                  class="rounded shadow-sm" 
                                  style="width: 80px; height: 80px; object-fit: cover;">
                         </div>
                         <div class="col">
-                            <h6 class="mb-1 text-primary">${review.albumName}</h6>
-                            <p class="mb-1 text-muted">${review.artistName}</p>
+                            <h6 class="mb-1 text-primary">${review.album.name}</h6>
+                            <p class="mb-1 text-muted">${review.album.artist}</p>
                             <div class="mb-2">
                                 <span class="text-warning">${stars}</span>
                                 <small class="text-muted ms-2">(${review.stars}/5 estrellas)</small>

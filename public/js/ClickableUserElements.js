@@ -73,25 +73,33 @@ class ClickableUserElements {
      * @param {Element} element - The element to search within
      */
     enhanceUsernames(element) {
-        // Common selectors for username elements
+        // Common selectors for username elements - ONLY specific user-related elements
         const usernameSelectors = [
             '.review-username',
             '[data-username]',
-            '.username',
+            '.username:not(.artist-name):not(.album-artist)',
             '.user-name',
-            '.author-name',
             '.profile-username',
-            // Look for elements that contain username data
-            '[data-user-id]:not(img):not(.profile-picture-clickable)'
+            // Look for elements that contain username data but exclude artist names
+            '[data-user-id]:not(img):not(.profile-picture-clickable):not(.artist-name):not(.album-artist)'
         ];
 
         usernameSelectors.forEach(selector => {
             const elements = element.querySelectorAll(selector);
-            elements.forEach(el => this.makeUsernameClickable(el));
+            elements.forEach(el => {
+                // Skip if this is an artist name or album-related element
+                if (el.classList.contains('artist-name') || 
+                    el.classList.contains('album-artist') ||
+                    el.closest('.album-info') ||
+                    el.closest('.artist-info')) {
+                    return;
+                }
+                this.makeUsernameClickable(el);
+            });
         });
 
-        // Also look for text patterns that might be usernames in reviews
-        this.findUsernamesInText(element);
+        // Don't automatically convert text patterns - too aggressive
+        // this.findUsernamesInText(element);
     }
 
     /**
@@ -282,15 +290,11 @@ class ClickableUserElements {
      * @param {Element} element - The element to search within
      */
     enhanceProfilePictures(element) {
-        // Common selectors for profile picture elements
+        // Common selectors for profile picture elements - ONLY user profile pictures
         const profilePictureSelectors = [
-            'img[src*="profile"]',
-            'img[src*="avatar"]',
-            'img[alt*="perfil"]',
-            'img[alt*="profile"]',
-            'img[data-user-id]',
+            'img[src*="profile_pics"]',  // Only images from profile_pics directory
+            'img[data-user-id]:not([src*="spotify"]):not([src*="album"])',  // Only user images, not album covers
             '.profile-picture',
-            '.avatar',
             '.user-avatar',
             '#profilePicture',
             '#navbarProfilePicture',
@@ -299,7 +303,17 @@ class ClickableUserElements {
 
         profilePictureSelectors.forEach(selector => {
             const elements = element.querySelectorAll(selector);
-            elements.forEach(img => this.makeProfilePictureClickable(img));
+            elements.forEach(img => {
+                // Skip if this is an album cover or artist image
+                if (img.src.includes('spotify') || 
+                    img.src.includes('album') ||
+                    img.src.includes('artist') ||
+                    img.closest('.album-cover') ||
+                    img.closest('.artist-image')) {
+                    return;
+                }
+                this.makeProfilePictureClickable(img);
+            });
         });
     }
 

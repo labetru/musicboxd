@@ -1531,7 +1531,6 @@ app.get("/api/users/:userId/top-reviews", async (req, res) => {
         r.created_at
       FROM reviews r
       WHERE r.user_id = ? 
-        AND r.type = 'album' 
         AND r.is_hidden = FALSE 
         AND r.stars >= 4
       ORDER BY r.stars DESC, r.created_at DESC
@@ -1543,7 +1542,7 @@ app.get("/api/users/:userId/top-reviews", async (req, res) => {
       const result = {
         userId: targetUserId,
         username: userCheck[0].username,
-        topReviews: [],
+        reviews: [],  // Changed from topReviews to reviews
         message: "Este usuario no tiene reseñas de 4+ estrellas"
       };
       
@@ -1629,7 +1628,7 @@ app.get("/api/users/:userId/top-reviews", async (req, res) => {
     const result = {
       userId: targetUserId,
       username: userCheck[0].username,
-      topReviews: enrichedReviews,
+      reviews: enrichedReviews,  // Changed from topReviews to reviews
       totalCount: enrichedReviews.length,
       message: `${enrichedReviews.length} reseñas de 4+ estrellas encontradas`
     };

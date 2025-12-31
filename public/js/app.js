@@ -271,6 +271,17 @@ function showApp() {
   document.getElementById("albumDetailContainer").style.display = "none";
   if (profileContainer) profileContainer.style.display = "none";
   
+  // Hide profile viewer if it exists
+  const profileViewerContainer = document.getElementById("profileViewerContainer");
+  if (profileViewerContainer) {
+    profileViewerContainer.style.display = "none";
+  }
+  
+  // Hide profile viewer using the global instance
+  if (window.profileViewer) {
+    window.profileViewer.hide();
+  }
+  
   const welcome = document.getElementById("welcomeMessage");
   if (welcome) welcome.style.display = "block";
   
@@ -2616,6 +2627,17 @@ window.renderAlbumDetailsLogic = async function(spotify_id) {
     document.getElementById("mostReviewedAlbumsSection").style.display = "none"; 
     document.getElementById("randomReviewsSection").style.display = "none";
     if (profileContainer) profileContainer.style.display = "none";
+    
+    // Hide profile viewer if it exists
+    const profileViewerContainer = document.getElementById("profileViewerContainer");
+    if (profileViewerContainer) {
+        profileViewerContainer.style.display = "none";
+    }
+    
+    // Hide profile viewer using the global instance
+    if (window.profileViewer) {
+        window.profileViewer.hide();
+    }
     
     const container = document.getElementById("albumDetailContainer");
     container.style.display = "block";
