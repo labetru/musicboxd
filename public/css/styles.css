@@ -397,6 +397,31 @@ textarea#reviewText {
 #profileContainer #profileUsername {
     font-weight: bold;
 }
+
+/* Profile notifications section */
+#profileContainer .card h5 {
+    color: #495057;
+    font-weight: 600;
+}
+
+#profileContainer .badge.bg-danger {
+    font-size: 0.75rem;
+    min-width: 20px;
+    height: 20px;
+    line-height: 20px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+#profileContainer .btn-outline-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
 /* ========================
    LAZY LOADING OPTIMIZATIONS
 ======================== */
@@ -1544,6 +1569,111 @@ body:not(.login-mode) #authContainer {
 .card[onclick]:hover {
   box-shadow: 0 6px 12px rgba(255, 193, 7, 0.3) !important;
 }
+
+/* ========================
+   UNIVERSAL CLICKABLE ELEMENTS
+======================== */
+
+/* Universal clickable username styles */
+.username-clickable {
+  cursor: pointer !important;
+  color: #FFC107 !important;
+  text-decoration: none !important;
+  transition: all 0.2s ease !important;
+  font-weight: 600 !important;
+  border-radius: 3px !important;
+  padding: 2px 4px !important;
+  display: inline-block !important;
+}
+
+.username-clickable:hover {
+  color: #e0a800 !important;
+  text-decoration: underline !important;
+  background-color: rgba(255, 193, 7, 0.1) !important;
+  transform: translateY(-1px) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+.username-clickable:focus {
+  outline: 2px solid #FFC107 !important;
+  outline-offset: 2px !important;
+  background-color: rgba(255, 193, 7, 0.2) !important;
+}
+
+/* Universal clickable profile picture styles */
+.profile-picture-clickable {
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  border: 2px solid transparent !important;
+  border-radius: 50% !important;
+}
+
+.profile-picture-clickable:hover {
+  transform: scale(1.05) !important;
+  border-color: #FFC107 !important;
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4) !important;
+  filter: brightness(1.1) !important;
+}
+
+.profile-picture-clickable:focus {
+  outline: 3px solid #FFC107 !important;
+  outline-offset: 2px !important;
+  border-color: #FFC107 !important;
+}
+
+/* Specific styles for different sizes */
+.profile-picture-clickable.size-small {
+  border-width: 1px !important;
+}
+
+.profile-picture-clickable.size-medium {
+  border-width: 2px !important;
+}
+
+.profile-picture-clickable.size-large {
+  border-width: 3px !important;
+}
+
+/* Enhanced hover effects for profile pictures in different contexts */
+.profile-picture-clickable.in-review:hover {
+  transform: scale(1.08) !important;
+  box-shadow: 0 6px 16px rgba(255, 193, 7, 0.5) !important;
+}
+
+.profile-picture-clickable.in-navbar:hover {
+  transform: scale(1.03) !important;
+  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3) !important;
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+  .username-clickable,
+  .profile-picture-clickable {
+    transition: none !important;
+  }
+  
+  .username-clickable:hover,
+  .profile-picture-clickable:hover {
+    transform: none !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .username-clickable {
+    border: 1px solid #FFC107 !important;
+  }
+  
+  .username-clickable:hover {
+    background-color: #FFC107 !important;
+    color: #424242 !important;
+  }
+  
+  .profile-picture-clickable {
+    border-width: 3px !important;
+    border-color: #FFC107 !important;
+  }
+}
 /* ========================
    NAVBAR
 ======================== */
@@ -1948,6 +2078,66 @@ textarea#reviewText,
   color: #000000 !important;
 }
 
+/* Clickable profile elements */
+.profile-username-clickable {
+  cursor: pointer !important;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.profile-username-clickable:hover {
+  color: #0056b3 !important;
+  text-decoration: underline;
+}
+
+.profile-picture-clickable {
+  cursor: pointer !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-picture-clickable:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
+.social-stat-clickable {
+  cursor: pointer !important;
+  transition: color 0.2s ease;
+}
+
+.social-stat-clickable:hover {
+  color: #0056b3 !important;
+}
+
+/* Profile viewer specific styles */
+#profileViewerContainer .card {
+  border: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+#profileViewerContainer .review-item {
+  transition: background-color 0.2s ease;
+}
+
+#profileViewerContainer .review-item:hover {
+  background-color: #f8f9fa;
+}
+
+#profileViewerContainer .top-reviews-list .border-bottom:last-child {
+  border-bottom: none !important;
+}
+
+/* Follow button styles */
+#followButton {
+  min-width: 120px;
+  transition: all 0.3s ease;
+}
+
+#followButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Nombres de usuarios en las reseñas en negro */
 #albumDetailContainer .review-username,
 #albumDetailContainer strong {
@@ -2079,6 +2269,244 @@ small { font-size: 1rem; }
 .card-body h6 { font-size: 1.2rem; }
 .card-body p { font-size: 1.1rem; }
 .card-body small { font-size: 1rem; }
+
+/* ========================
+   SISTEMA DE NOTIFICACIONES
+======================== */
+
+/* Notification Panel */
+.notification-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 400px;
+  height: 100vh;
+  background: #525252;
+  border-left: 2px solid #616161;
+  z-index: 10000;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.notification-panel.show {
+  transform: translateX(0);
+}
+
+.notification-panel-header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #616161;
+  background: #424242;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #E0E0E0;
+}
+
+.notification-panel-header h5 {
+  color: #E0E0E0 !important;
+  font-family: "Jersey 15", cursive !important;
+  margin: 0;
+}
+
+.notification-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.notification-panel-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #616161;
+  background: #424242;
+}
+
+.notification-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.notification-overlay.show {
+  opacity: 1;
+}
+
+/* Notifications List */
+.notifications-list {
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+
+.notification-item {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #616161;
+  background: #525252;
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.notification-item:hover {
+  background: #5a5a5a;
+}
+
+.notification-item.unread {
+  background: rgba(255, 193, 7, 0.1);
+  border-left: 4px solid #FFC107;
+}
+
+.notification-item.unread::before {
+  content: '';
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 8px;
+  height: 8px;
+  background: #FFC107;
+  border-radius: 50%;
+}
+
+.notification-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.notification-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.notification-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-text {
+  color: #E0E0E0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-bottom: 0.25rem;
+}
+
+.notification-text strong {
+  color: #FFC107;
+  font-family: "Jersey 15", cursive !important;
+}
+
+.notification-album {
+  color: #B0B0B0;
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.notification-album img {
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+  object-fit: cover;
+}
+
+.notification-time {
+  color: #9E9E9E;
+  font-size: 0.75rem;
+}
+
+.notification-rating {
+  color: #FFC107;
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+}
+
+/* Notification Badge */
+#notificationBadge {
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+  color: white !important;
+  font-family: "Josefin Sans", sans-serif !important;
+  font-weight: 600;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .notification-panel {
+    width: 100vw;
+    right: 0;
+  }
+  
+  .notification-panel-header {
+    padding: 0.75rem 1rem;
+  }
+  
+  .notification-panel-footer {
+    padding: 0.75rem 1rem;
+  }
+  
+  .notification-item {
+    padding: 0.75rem 1rem;
+  }
+  
+  .notification-content {
+    gap: 0.5rem;
+  }
+  
+  .notification-avatar {
+    width: 35px;
+    height: 35px;
+  }
+}
+
+/* Loading States */
+.notification-loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.notification-error {
+  background: rgba(244, 67, 54, 0.1);
+  border-left: 4px solid #f44336;
+}
+
+/* Scrollbar for notifications */
+.notifications-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notifications-list::-webkit-scrollbar-track {
+  background: #424242;
+}
+
+.notifications-list::-webkit-scrollbar-thumb {
+  background: #616161;
+  border-radius: 3px;
+}
+
+.notifications-list::-webkit-scrollbar-thumb:hover {
+  background: #757575;
+}
 
 /* ========================
    REPRODUCTOR DE AUDIO PREVIEW
@@ -2767,5 +3195,450 @@ body {
   
   #authContainer .main-title {
     font-size: 2.5rem !important;
+  }
+}
+
+/* ========================
+   SOCIAL LISTS COMPONENT
+======================== */
+
+/* Social Lists Modal */
+#socialListsModal .modal-content {
+  background-color: #525252 !important;
+  border: 2px solid #616161 !important;
+  border-radius: 15px !important;
+  color: #E0E0E0 !important;
+}
+
+#socialListsModal .modal-header {
+  border-bottom: 2px solid #616161 !important;
+  background: rgba(255, 193, 7, 0.1);
+}
+
+#socialListsModal .modal-title {
+  font-family: "Jersey 15", cursive !important;
+  font-size: 1.5rem !important;
+  font-weight: 600 !important;
+  color: #FFC107 !important;
+}
+
+#socialListsModal .modal-footer {
+  border-top: 2px solid #616161 !important;
+  background: rgba(66, 66, 66, 0.3);
+}
+
+/* Social Users List */
+.social-users-list {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #616161;
+  border-radius: 10px;
+  background: rgba(66, 66, 66, 0.3);
+}
+
+.social-users-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.social-users-list::-webkit-scrollbar-track {
+  background: #424242;
+  border-radius: 4px;
+}
+
+.social-users-list::-webkit-scrollbar-thumb {
+  background: #616161;
+  border-radius: 4px;
+}
+
+.social-users-list::-webkit-scrollbar-thumb:hover {
+  background: #757575;
+}
+
+/* Social User Item */
+.social-user-item {
+  background: rgba(82, 82, 82, 0.5);
+  transition: all 0.3s ease;
+  border-bottom: 1px solid rgba(97, 97, 97, 0.3) !important;
+}
+
+.social-user-item:hover {
+  background: rgba(82, 82, 82, 0.8);
+  transform: translateX(5px);
+}
+
+.social-user-item:last-child {
+  border-bottom: none !important;
+}
+
+/* Profile Picture in Social Lists */
+.social-user-item .profile-picture-clickable {
+  border: 2px solid rgba(255, 193, 7, 0.3);
+  transition: all 0.3s ease;
+}
+
+.social-user-item .profile-picture-clickable:hover {
+  border-color: #FFC107;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3);
+}
+
+/* Username in Social Lists */
+.social-user-item .profile-username-clickable {
+  transition: all 0.2s ease;
+}
+
+.social-user-item .profile-username-clickable:hover {
+  color: #FFC107 !important;
+  text-shadow: 0 0 8px rgba(255, 193, 7, 0.3);
+}
+
+/* User Stats */
+.social-user-item .text-muted {
+  color: #B0B0B0 !important;
+}
+
+.social-user-item .fas {
+  color: #9E9E9E;
+}
+
+.social-user-item .fa-star {
+  color: #FFC107 !important;
+}
+
+.social-user-item .fa-music {
+  color: #9E9E9E !important;
+}
+
+/* Social User Actions */
+.social-user-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.social-user-actions .btn {
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.social-user-actions .btn-outline-danger:hover {
+  background: #dc3545;
+  border-color: #dc3545;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+.social-user-actions .btn-outline-primary:hover {
+  background: #007bff;
+  border-color: #007bff;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+.social-user-actions .btn-outline-secondary:hover {
+  background: #6c757d;
+  border-color: #6c757d;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+}
+
+/* Social Lists Pagination */
+#socialListsPagination .pagination {
+  margin: 0;
+}
+
+#socialListsPagination .page-link {
+  background: rgba(82, 82, 82, 0.8);
+  border: 1px solid #616161;
+  color: #E0E0E0;
+  padding: 8px 12px;
+  transition: all 0.3s ease;
+}
+
+#socialListsPagination .page-link:hover {
+  background: rgba(255, 193, 7, 0.2);
+  border-color: #FFC107;
+  color: #FFC107;
+  transform: translateY(-2px);
+}
+
+#socialListsPagination .page-item.active .page-link {
+  background: linear-gradient(135deg, #FFC107 0%, #e0a800 100%);
+  border-color: #FFC107;
+  color: #424242;
+  font-weight: 600;
+}
+
+#socialListsPagination .page-item.disabled .page-link {
+  background: rgba(66, 66, 66, 0.5);
+  border-color: #424242;
+  color: #757575;
+  cursor: not-allowed;
+}
+
+/* Social Lists Loading State */
+#socialListsLoading .spinner-border {
+  width: 3rem;
+  height: 3rem;
+  border-width: 0.3em;
+}
+
+/* Social Lists Error State */
+#socialListsError .alert-danger {
+  background: rgba(220, 53, 69, 0.1);
+  border: 2px solid rgba(220, 53, 69, 0.3);
+  color: #f8d7da;
+  border-radius: 10px;
+}
+
+#socialListsError .btn-outline-primary {
+  border-color: #FFC107;
+  color: #FFC107;
+}
+
+#socialListsError .btn-outline-primary:hover {
+  background: #FFC107;
+  color: #424242;
+}
+
+/* Social Lists Empty State */
+#socialListsEmpty .empty-state {
+  padding: 3rem 2rem;
+  text-align: center;
+  background: rgba(66, 66, 66, 0.3);
+  border: 2px dashed rgba(255, 193, 7, 0.3);
+  border-radius: 15px;
+  color: #B0B0B0;
+}
+
+#socialListsEmpty .fa-users {
+  color: rgba(255, 193, 7, 0.5);
+  margin-bottom: 1rem;
+}
+
+/* Social Lists Info Section */
+#socialListsContent .row.mb-3 {
+  background: rgba(66, 66, 66, 0.3);
+  padding: 15px;
+  border-radius: 10px;
+  border: 1px solid rgba(97, 97, 97, 0.3);
+  margin-bottom: 20px !important;
+}
+
+#socialListsTitle {
+  font-family: "Jersey 15", cursive !important;
+  font-size: 1.3rem !important;
+  font-weight: 600 !important;
+  color: #FFC107 !important;
+}
+
+#socialListsSubtitle {
+  color: #B0B0B0 !important;
+  font-style: italic;
+}
+
+#socialListsCount {
+  color: #9E9E9E !important;
+  font-weight: 500;
+}
+
+/* Responsive Design for Social Lists */
+@media (max-width: 768px) {
+  #socialListsModal .modal-dialog {
+    margin: 10px;
+    max-width: calc(100% - 20px);
+  }
+  
+  .social-users-list {
+    max-height: 300px;
+  }
+  
+  .social-user-item {
+    padding: 15px !important;
+  }
+  
+  .social-user-item .profile-picture-clickable {
+    width: 45px !important;
+    height: 45px !important;
+  }
+  
+  .social-user-actions {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .social-user-actions .btn {
+    font-size: 0.8rem;
+    padding: 5px 10px;
+    width: 100%;
+  }
+  
+  #socialListsTitle {
+    font-size: 1.1rem !important;
+  }
+  
+  #socialListsContent .row.mb-3 {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 576px) {
+  .social-user-item {
+    padding: 12px !important;
+  }
+  
+  .social-user-item .profile-picture-clickable {
+    width: 40px !important;
+    height: 40px !important;
+  }
+  
+  .social-user-item h6 {
+    font-size: 0.95rem;
+  }
+  
+  .social-user-item .small {
+    font-size: 0.8rem !important;
+  }
+  
+  #socialListsTitle {
+    font-size: 1rem !important;
+  }
+  
+  #socialListsModal .modal-title {
+    font-size: 1.3rem !important;
+  }
+}
+
+/* Accessibility Improvements for Social Lists */
+.social-user-item:focus-within {
+  outline: 2px solid #FFC107;
+  outline-offset: 2px;
+  background: rgba(255, 193, 7, 0.1);
+}
+
+.social-user-item .profile-picture-clickable:focus,
+.social-user-item .profile-username-clickable:focus {
+  outline: 2px solid #FFC107;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.social-user-actions .btn:focus {
+  outline: 2px solid #FFC107;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.3);
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .social-user-item {
+    border: 2px solid #FFC107 !important;
+    background: #424242 !important;
+  }
+  
+  .social-user-item .profile-picture-clickable {
+    border: 3px solid #FFC107 !important;
+  }
+  
+  .social-users-list {
+    border: 3px solid #FFC107 !important;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .social-user-item,
+  .social-user-item .profile-picture-clickable,
+  .social-user-actions .btn {
+    transition: none !important;
+  }
+  
+  .social-user-item:hover {
+    transform: none !important;
+  }
+  
+  .social-user-actions .btn:hover {
+    transform: none !important;
+  }
+}
+
+/* Social Lists Clickable Elements */
+.social-stat-clickable {
+  cursor: pointer !important;
+  transition: color 0.2s ease;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+
+.social-stat-clickable:hover {
+  color: #FFC107 !important;
+  text-decoration-color: #FFC107;
+  text-shadow: 0 0 8px rgba(255, 193, 7, 0.3);
+}
+
+/* Social Lists Integration with Profile Viewer */
+.profile-social-stats {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.profile-social-stat {
+  text-align: center;
+  padding: 15px;
+  background: rgba(82, 82, 82, 0.5);
+  border: 1px solid rgba(97, 97, 97, 0.3);
+  border-radius: 10px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.profile-social-stat:hover {
+  background: rgba(82, 82, 82, 0.8);
+  border-color: #FFC107;
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(255, 193, 7, 0.2);
+}
+
+.profile-social-stat .stat-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #FFC107;
+  display: block;
+  font-family: "Jersey 15", cursive !important;
+}
+
+.profile-social-stat .stat-label {
+  font-size: 0.9rem;
+  color: #B0B0B0;
+  margin-top: 5px;
+  font-family: "Josefin Sans", sans-serif !important;
+}
+
+@media (max-width: 576px) {
+  .profile-social-stats {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .profile-social-stat {
+    min-width: auto;
+    padding: 12px;
+  }
+  
+  .profile-social-stat .stat-number {
+    font-size: 1.3rem;
+  }
+  
+  .profile-social-stat .stat-label {
+    font-size: 0.85rem;
   }
 }

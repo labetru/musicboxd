@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import session from "express-session";
 import { pool } from "./db.js"; 
 import { config } from "./config.js";
+import { profileCache, socialStatsCache, topReviewsCache, notificationCountCache } from "./cache.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
@@ -148,6 +149,8 @@ const CLIENT_ID = config.spotify.clientId;
 const CLIENT_SECRET = config.spotify.clientSecret;
 let token = "";
 let tokenExpires = 0;
+
+
 
 async function getToken() {
   if (Date.now() < tokenExpires) return token;
@@ -1084,6 +1087,1474 @@ app.post("/system/sync-data", async (req, res) => {
 });
 
 /* ==============================
+   RUTAS DE PERFILES PÚBLICOS
+============================== */
+
+// Obtener perfil público de usuario - OPTIMIZED WITH CACHING
+app.get("/api/users/:userId/profile", async (req, res) => {
+  const targetUserId = parseInt(req.params.userId);
+
+  // Validar que el ID del usuario sea válido
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  try {
+    // Try to get from cache first
+    const cacheKey = `profile_${targetUserId}`;
+    const cachedProfile = profileCache.get(cacheKey);
+    
+    if (cachedProfile) {
+      // Add cache headers
+      res.set({
+        'Cache-Control': 'public, max-age=300',
+        'ETag': `"profile-${targetUserId}-cached"`,
+        'X-Cache': 'HIT'
+      });
+      
+      return res.json({
+        success: true,
+        profile: cachedProfile,
+        cached: true
+      });
+    }
+
+    // Cache miss - fetch from database with optimized query
+    const [userRows] = await pool.query(
+      `SELECT 
+        u.id,
+        u.username,
+        u.profile_pic_url,
+        u.followers_count,
+        u.following_count,
+        u.created_at,
+        COUNT(r.id) as totalReviews,
+        IFNULL(AVG(r.stars), 0) as avgStars
+      FROM users u
+      LEFT JOIN reviews r ON u.id = r.user_id AND r.is_hidden = FALSE
+      WHERE u.id = ? AND u.is_blocked = FALSE
+      GROUP BY u.id`,
+      [targetUserId]
+    );
+
+    if (userRows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const user = userRows[0];
+
+    // Construir respuesta del perfil público
+    const publicProfile = {
+      id: user.id,
+      username: user.username,
+      profilePictureUrl: user.profile_pic_url,
+      socialStats: {
+        followersCount: user.followers_count,
+        followingCount: user.following_count
+      },
+      reviewStats: {
+        totalReviews: user.totalReviews,
+        averageStars: Number(user.avgStars).toFixed(1)
+      },
+      memberSince: user.created_at
+    };
+
+    // Cache the result for 10 minutes
+    profileCache.set(cacheKey, publicProfile, 600000);
+
+    // Add cache headers
+    res.set({
+      'Cache-Control': 'public, max-age=300',
+      'ETag': `"profile-${targetUserId}-${Date.now()}"`,
+      'X-Cache': 'MISS'
+    });
+
+    res.json({
+      success: true,
+      profile: publicProfile,
+      cached: false
+    });
+
+  } catch (err) {
+    console.error("Error al obtener perfil público:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// ENDPOINTS DE LISTAS SOCIALES
+app.get("/api/users/:userId/followers", async (req, res) => {
+  const targetUserId = parseInt(req.params.userId);
+  const page = parseInt(req.query.page) || 1;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 50);
+  const offset = (page - 1) * limit;
+
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  if (page < 1 || limit < 1) {
+    return res.status(400).json({ error: "Parámetros de paginación inválidos" });
+  }
+
+  try {
+    const [targetUser] = await pool.query(
+      "SELECT id, username, followers_count FROM users WHERE id = ? AND is_blocked = FALSE",
+      [targetUserId]
+    );
+
+    if (targetUser.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const [followers] = await pool.query(
+      `SELECT 
+        u.id,
+        u.username,
+        u.profile_pic_url,
+        uf.created_at as followed_since,
+        COUNT(r.id) as review_count,
+        IFNULL(AVG(r.stars), 0) as avg_stars
+      FROM user_follows uf
+      INNER JOIN users u ON uf.follower_id = u.id
+      LEFT JOIN reviews r ON u.id = r.user_id AND r.is_hidden = FALSE
+      WHERE uf.following_id = ? AND u.is_blocked = FALSE
+      GROUP BY u.id, u.username, u.profile_pic_url, uf.created_at
+      ORDER BY uf.created_at DESC
+      LIMIT ? OFFSET ?`,
+      [targetUserId, limit, offset]
+    );
+
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total 
+       FROM user_follows uf
+       INNER JOIN users u ON uf.follower_id = u.id
+       WHERE uf.following_id = ? AND u.is_blocked = FALSE`,
+      [targetUserId]
+    );
+
+    const totalFollowers = countResult[0].total;
+
+    const formattedFollowers = followers.map(follower => ({
+      id: follower.id,
+      username: follower.username,
+      profilePictureUrl: follower.profile_pic_url,
+      followedSince: follower.followed_since,
+      stats: {
+        reviewCount: follower.review_count,
+        averageStars: Number(follower.avg_stars).toFixed(1)
+      }
+    }));
+
+    res.json({
+      success: true,
+      targetUser: {
+        id: targetUserId,
+        username: targetUser[0].username,
+        followersCount: targetUser[0].followers_count
+      },
+      followers: formattedFollowers,
+      pagination: {
+        currentPage: page,
+        limit,
+        total: totalFollowers,
+        totalPages: Math.ceil(totalFollowers / limit),
+        hasNext: (page * limit) < totalFollowers,
+        hasPrevious: page > 1
+      }
+    });
+
+  } catch (err) {
+    console.error("Error al obtener lista de seguidores:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+app.get("/api/users/:userId/following", async (req, res) => {
+  const targetUserId = parseInt(req.params.userId);
+  const page = parseInt(req.query.page) || 1;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 50);
+  const offset = (page - 1) * limit;
+
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  if (page < 1 || limit < 1) {
+    return res.status(400).json({ error: "Parámetros de paginación inválidos" });
+  }
+
+  try {
+    const [targetUser] = await pool.query(
+      "SELECT id, username, following_count FROM users WHERE id = ? AND is_blocked = FALSE",
+      [targetUserId]
+    );
+
+    if (targetUser.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const [following] = await pool.query(
+      `SELECT 
+        u.id,
+        u.username,
+        u.profile_pic_url,
+        uf.created_at as followed_since,
+        COUNT(r.id) as review_count,
+        IFNULL(AVG(r.stars), 0) as avg_stars
+      FROM user_follows uf
+      INNER JOIN users u ON uf.following_id = u.id
+      LEFT JOIN reviews r ON u.id = r.user_id AND r.is_hidden = FALSE
+      WHERE uf.follower_id = ? AND u.is_blocked = FALSE
+      GROUP BY u.id, u.username, u.profile_pic_url, uf.created_at
+      ORDER BY uf.created_at DESC
+      LIMIT ? OFFSET ?`,
+      [targetUserId, limit, offset]
+    );
+
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total 
+       FROM user_follows uf
+       INNER JOIN users u ON uf.following_id = u.id
+       WHERE uf.follower_id = ? AND u.is_blocked = FALSE`,
+      [targetUserId]
+    );
+
+    const totalFollowing = countResult[0].total;
+
+    let currentUserFollowing = new Set();
+    if (req.session.userId && req.session.userId !== targetUserId) {
+      const followingIds = following.map(f => f.id);
+      if (followingIds.length > 0) {
+        const [currentUserFollows] = await pool.query(
+          `SELECT following_id 
+           FROM user_follows 
+           WHERE follower_id = ? AND following_id IN (${followingIds.map(() => '?').join(',')})`,
+          [req.session.userId, ...followingIds]
+        );
+        currentUserFollowing = new Set(currentUserFollows.map(f => f.following_id));
+      }
+    }
+
+    const formattedFollowing = following.map(followedUser => ({
+      id: followedUser.id,
+      username: followedUser.username,
+      profilePictureUrl: followedUser.profile_pic_url,
+      followedSince: followedUser.followed_since,
+      stats: {
+        reviewCount: followedUser.review_count,
+        averageStars: Number(followedUser.avg_stars).toFixed(1)
+      },
+      relationship: {
+        canUnfollow: req.session.userId === targetUserId,
+        isFollowedByCurrentUser: currentUserFollowing.has(followedUser.id)
+      }
+    }));
+
+    res.json({
+      success: true,
+      targetUser: {
+        id: targetUserId,
+        username: targetUser[0].username,
+        followingCount: targetUser[0].following_count
+      },
+      following: formattedFollowing,
+      pagination: {
+        currentPage: page,
+        limit,
+        total: totalFollowing,
+        totalPages: Math.ceil(totalFollowing / limit),
+        hasNext: (page * limit) < totalFollowing,
+        hasPrevious: page > 1
+      },
+      currentUser: {
+        id: req.session.userId || null,
+        canModify: req.session.userId === targetUserId
+      }
+    });
+
+  } catch (err) {
+    console.error("Error al obtener lista de usuarios seguidos:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Obtener estadísticas sociales de usuario - OPTIMIZED WITH CACHING
+app.get("/api/users/:userId/social-stats", async (req, res) => {
+  const targetUserId = parseInt(req.params.userId);
+
+  // Validar que el ID del usuario sea válido
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  try {
+    // Try to get from cache first
+    const cacheKey = `social_stats_${targetUserId}_${req.session.userId || 'anonymous'}`;
+    const cachedStats = socialStatsCache.get(cacheKey);
+    
+    if (cachedStats) {
+      res.set({
+        'Cache-Control': 'public, max-age=180',
+        'X-Cache': 'HIT'
+      });
+      
+      return res.json({
+        success: true,
+        ...cachedStats,
+        cached: true
+      });
+    }
+
+    // Cache miss - fetch from database with optimized query
+    const [userCheck] = await pool.query(
+      "SELECT id, username FROM users WHERE id = ? AND is_blocked = FALSE",
+      [targetUserId]
+    );
+
+    if (userCheck.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    // Obtener estadísticas sociales detalladas con una sola query optimizada
+    const [socialStats] = await pool.query(
+      `SELECT 
+        u.followers_count,
+        u.following_count,
+        COUNT(r.id) as totalReviews,
+        IFNULL(AVG(r.stars), 0) as avgStars,
+        COUNT(DISTINCT r.spotify_id) as uniqueAlbums
+      FROM users u
+      LEFT JOIN reviews r ON u.id = r.user_id AND r.is_hidden = FALSE
+      WHERE u.id = ?
+      GROUP BY u.id`,
+      [targetUserId]
+    );
+
+    const stats = socialStats[0];
+
+    // Verificar si el usuario actual sigue a este usuario (si está autenticado)
+    let isFollowing = false;
+    if (req.session.userId && req.session.userId !== targetUserId) {
+      const [followCheck] = await pool.query(
+        "SELECT 1 FROM user_follows WHERE follower_id = ? AND following_id = ? LIMIT 1",
+        [req.session.userId, targetUserId]
+      );
+      isFollowing = followCheck.length > 0;
+    }
+
+    const result = {
+      userId: targetUserId,
+      username: userCheck[0].username,
+      socialStats: {
+        followersCount: stats.followers_count,
+        followingCount: stats.following_count,
+        totalReviews: stats.totalReviews,
+        averageStars: Number(stats.avgStars).toFixed(1),
+        uniqueAlbums: stats.uniqueAlbums
+      },
+      relationship: {
+        isFollowing: isFollowing,
+        canFollow: req.session.userId && req.session.userId !== targetUserId
+      }
+    };
+
+    // Cache the result for 5 minutes
+    socialStatsCache.set(cacheKey, result, 300000);
+
+    res.set({
+      'Cache-Control': 'public, max-age=180',
+      'X-Cache': 'MISS'
+    });
+
+    res.json({
+      success: true,
+      ...result,
+      cached: false
+    });
+
+  } catch (err) {
+    console.error("Error al obtener estadísticas sociales:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Obtener álbumes mejor reseñados de un usuario - OPTIMIZED WITH CACHING
+app.get("/api/users/:userId/top-reviews", async (req, res) => {
+  const targetUserId = parseInt(req.params.userId);
+  const limit = parseInt(req.query.limit) || 5;
+
+  // Validar que el ID del usuario sea válido
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  // Validar límite
+  if (limit < 1 || limit > 20) {
+    return res.status(400).json({ error: "Límite debe estar entre 1 y 20" });
+  }
+
+  try {
+    // Try to get from cache first
+    const cacheKey = `top_reviews_${targetUserId}_${limit}`;
+    const cachedReviews = topReviewsCache.get(cacheKey);
+    
+    if (cachedReviews) {
+      res.set({
+        'Cache-Control': 'public, max-age=600',
+        'X-Cache': 'HIT'
+      });
+      
+      return res.json({
+        success: true,
+        ...cachedReviews,
+        cached: true
+      });
+    }
+
+    // Cache miss - fetch from database
+    const [userCheck] = await pool.query(
+      "SELECT id, username FROM users WHERE id = ? AND is_blocked = FALSE",
+      [targetUserId]
+    );
+
+    if (userCheck.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    // Obtener reseñas mejor calificadas (4+ estrellas) con query optimizada
+    const [topReviews] = await pool.query(
+      `SELECT 
+        r.id,
+        r.spotify_id,
+        r.stars,
+        r.comment,
+        r.created_at
+      FROM reviews r
+      WHERE r.user_id = ? 
+        AND r.type = 'album' 
+        AND r.is_hidden = FALSE 
+        AND r.stars >= 4
+      ORDER BY r.stars DESC, r.created_at DESC
+      LIMIT ?`,
+      [targetUserId, limit]
+    );
+
+    if (topReviews.length === 0) {
+      const result = {
+        userId: targetUserId,
+        username: userCheck[0].username,
+        topReviews: [],
+        message: "Este usuario no tiene reseñas de 4+ estrellas"
+      };
+      
+      // Cache empty result for shorter time
+      topReviewsCache.set(cacheKey, result, 300000); // 5 minutes
+      
+      return res.json({
+        success: true,
+        ...result,
+        cached: false
+      });
+    }
+
+    // Obtener información de Spotify para los álbumes
+    let enrichedReviews = topReviews;
+
+    try {
+      const token = await getToken();
+      if (token) {
+        const spotifyIds = [...new Set(topReviews.map(r => r.spotify_id))];
+        const idsString = spotifyIds.join(",");
+
+        const response = await fetch(
+          `https://api.spotify.com/v1/albums?ids=${idsString}`,
+          { 
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 8000 // 8 second timeout
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const albumMap = new Map();
+
+          if (data.albums) {
+            data.albums.filter(a => a !== null).forEach(album => {
+              albumMap.set(album.id, {
+                albumName: album.name,
+                artistName: album.artists[0]?.name || 'Artista Desconocido',
+                albumCoverUrl: album.images[0]?.url || 'https://placehold.co/300x300/333/fff?text=No+Cover',
+                releaseDate: album.release_date
+              });
+            });
+          }
+
+          // Enriquecer reseñas con información de Spotify
+          enrichedReviews = topReviews.map(review => {
+            const albumInfo = albumMap.get(review.spotify_id) || {};
+            return {
+              reviewId: review.id,
+              spotifyId: review.spotify_id,
+              stars: review.stars,
+              comment: review.comment,
+              createdAt: review.created_at,
+              album: {
+                name: albumInfo.albumName || 'Álbum Desconocido',
+                artist: albumInfo.artistName || 'Artista Desconocido',
+                coverUrl: albumInfo.albumCoverUrl || 'https://placehold.co/300x300/333/fff?text=No+Cover',
+                releaseDate: albumInfo.releaseDate
+              }
+            };
+          });
+        }
+      }
+    } catch (spotifyError) {
+      console.warn("Error obteniendo datos de Spotify para top reviews:", spotifyError);
+      // Continuar con datos básicos si Spotify falla
+      enrichedReviews = topReviews.map(review => ({
+        reviewId: review.id,
+        spotifyId: review.spotify_id,
+        stars: review.stars,
+        comment: review.comment,
+        createdAt: review.created_at,
+        album: {
+          name: 'Álbum Desconocido',
+          artist: 'Artista Desconocido',
+          coverUrl: 'https://placehold.co/300x300/333/fff?text=No+Cover',
+          releaseDate: null
+        }
+      }));
+    }
+
+    const result = {
+      userId: targetUserId,
+      username: userCheck[0].username,
+      topReviews: enrichedReviews,
+      totalCount: enrichedReviews.length,
+      message: `${enrichedReviews.length} reseñas de 4+ estrellas encontradas`
+    };
+
+    // Cache the result for 15 minutes
+    topReviewsCache.set(cacheKey, result, 900000);
+
+    res.set({
+      'Cache-Control': 'public, max-age=600',
+      'X-Cache': 'MISS'
+    });
+
+    res.json({
+      success: true,
+      ...result,
+      cached: false
+    });
+
+  } catch (err) {
+    console.error("Error al obtener top reviews:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+/* ==============================
+   RUTAS DE LISTAS SOCIALES
+============================== */
+
+// Obtener lista de seguidores de un usuario - OPTIMIZED WITH LAZY LOADING
+app.get("/api/users/:userId/followers", async (req, res) => {
+  const targetUserId = parseInt(req.params.userId);
+  const page = parseInt(req.query.page) || 1;
+  const limit = Math.min(parseInt(req.query.limit) || 20, 50); // Reduced default from 50 to 20 for better performance
+  const offset = (page - 1) * limit;
+
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  if (page < 1 || limit < 1) {
+    return res.status(400).json({ error: "Parámetros de paginación inválidos" });
+  }
+
+  try {
+    // Optimized query with better indexing
+    const [targetUser] = await pool.query(
+      "SELECT id, username, followers_count FROM users WHERE id = ? AND is_blocked = FALSE",
+      [targetUserId]
+    );
+
+    if (targetUser.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    // Use optimized query with lazy loading approach
+    const [followers] = await pool.query(
+      `SELECT 
+        u.id,
+        u.username,
+        u.profile_pic_url,
+        uf.created_at as followed_since
+      FROM user_follows uf
+      INNER JOIN users u ON uf.follower_id = u.id
+      WHERE uf.following_id = ? AND u.is_blocked = FALSE
+      ORDER BY uf.created_at DESC
+      LIMIT ? OFFSET ?`,
+      [targetUserId, limit, offset]
+    );
+
+    // Get total count with optimized query
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total 
+       FROM user_follows uf
+       INNER JOIN users u ON uf.follower_id = u.id
+       WHERE uf.following_id = ? AND u.is_blocked = FALSE`,
+      [targetUserId]
+    );
+
+    const totalFollowers = countResult[0].total;
+
+    // Lazy load review stats only if requested
+    const includeStats = req.query.includeStats === 'true';
+    let formattedFollowers;
+
+    if (includeStats && followers.length > 0) {
+      // Get review stats for all followers in a single query
+      const followerIds = followers.map(f => f.id);
+      const placeholders = followerIds.map(() => '?').join(',');
+      
+      const [reviewStats] = await pool.query(
+        `SELECT 
+          user_id,
+          COUNT(id) as review_count,
+          IFNULL(AVG(stars), 0) as avg_stars
+        FROM reviews 
+        WHERE user_id IN (${placeholders}) AND is_hidden = FALSE
+        GROUP BY user_id`,
+        followerIds
+      );
+
+      const statsMap = new Map();
+      reviewStats.forEach(stat => {
+        statsMap.set(stat.user_id, {
+          reviewCount: stat.review_count,
+          averageStars: Number(stat.avg_stars).toFixed(1)
+        });
+      });
+
+      formattedFollowers = followers.map(follower => ({
+        id: follower.id,
+        username: follower.username,
+        profilePictureUrl: follower.profile_pic_url,
+        followedSince: follower.followed_since,
+        stats: statsMap.get(follower.id) || { reviewCount: 0, averageStars: '0.0' }
+      }));
+    } else {
+      // Basic info only for faster loading
+      formattedFollowers = followers.map(follower => ({
+        id: follower.id,
+        username: follower.username,
+        profilePictureUrl: follower.profile_pic_url,
+        followedSince: follower.followed_since
+      }));
+    }
+
+    // Add cache headers for better performance
+    res.set({
+      'Cache-Control': 'public, max-age=180', // 3 minutes cache
+      'ETag': `"followers-${targetUserId}-${page}-${limit}"`,
+      'X-Total-Count': totalFollowers.toString()
+    });
+
+    res.json({
+      success: true,
+      targetUser: {
+        id: targetUserId,
+        username: targetUser[0].username,
+        followersCount: targetUser[0].followers_count
+      },
+      followers: formattedFollowers,
+      pagination: {
+        currentPage: page,
+        limit,
+        total: totalFollowers,
+        totalPages: Math.ceil(totalFollowers / limit),
+        hasNext: (page * limit) < totalFollowers,
+        hasPrevious: page > 1
+      },
+      lazyLoading: {
+        statsIncluded: includeStats,
+        nextPageUrl: (page * limit) < totalFollowers ? 
+          `/api/users/${targetUserId}/followers?page=${page + 1}&limit=${limit}` : null
+      }
+    });
+
+  } catch (err) {
+    console.error("Error al obtener lista de seguidores:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Obtener lista de usuarios seguidos por un usuario - OPTIMIZED WITH LAZY LOADING
+app.get("/api/users/:userId/following", async (req, res) => {
+  const targetUserId = parseInt(req.params.userId);
+  const page = parseInt(req.query.page) || 1;
+  const limit = Math.min(parseInt(req.query.limit) || 20, 50); // Reduced default for better performance
+  const offset = (page - 1) * limit;
+
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  if (page < 1 || limit < 1) {
+    return res.status(400).json({ error: "Parámetros de paginación inválidos" });
+  }
+
+  try {
+    // Optimized query with better indexing
+    const [targetUser] = await pool.query(
+      "SELECT id, username, following_count FROM users WHERE id = ? AND is_blocked = FALSE",
+      [targetUserId]
+    );
+
+    if (targetUser.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    // Use optimized query with lazy loading approach
+    const [following] = await pool.query(
+      `SELECT 
+        u.id,
+        u.username,
+        u.profile_pic_url,
+        uf.created_at as followed_since
+      FROM user_follows uf
+      INNER JOIN users u ON uf.following_id = u.id
+      WHERE uf.follower_id = ? AND u.is_blocked = FALSE
+      ORDER BY uf.created_at DESC
+      LIMIT ? OFFSET ?`,
+      [targetUserId, limit, offset]
+    );
+
+    // Get total count with optimized query
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total 
+       FROM user_follows uf
+       INNER JOIN users u ON uf.following_id = u.id
+       WHERE uf.follower_id = ? AND u.is_blocked = FALSE`,
+      [targetUserId]
+    );
+
+    const totalFollowing = countResult[0].total;
+
+    // Lazy load current user's following status only if needed
+    let currentUserFollowing = new Set();
+    if (req.session.userId && req.session.userId !== targetUserId && following.length > 0) {
+      const followingIds = following.map(f => f.id);
+      const placeholders = followingIds.map(() => '?').join(',');
+      
+      const [currentUserFollows] = await pool.query(
+        `SELECT following_id 
+         FROM user_follows 
+         WHERE follower_id = ? AND following_id IN (${placeholders})`,
+        [req.session.userId, ...followingIds]
+      );
+      currentUserFollowing = new Set(currentUserFollows.map(f => f.following_id));
+    }
+
+    // Lazy load review stats only if requested
+    const includeStats = req.query.includeStats === 'true';
+    let formattedFollowing;
+
+    if (includeStats && following.length > 0) {
+      // Get review stats for all followed users in a single query
+      const followingIds = following.map(f => f.id);
+      const placeholders = followingIds.map(() => '?').join(',');
+      
+      const [reviewStats] = await pool.query(
+        `SELECT 
+          user_id,
+          COUNT(id) as review_count,
+          IFNULL(AVG(stars), 0) as avg_stars
+        FROM reviews 
+        WHERE user_id IN (${placeholders}) AND is_hidden = FALSE
+        GROUP BY user_id`,
+        followingIds
+      );
+
+      const statsMap = new Map();
+      reviewStats.forEach(stat => {
+        statsMap.set(stat.user_id, {
+          reviewCount: stat.review_count,
+          averageStars: Number(stat.avg_stars).toFixed(1)
+        });
+      });
+
+      formattedFollowing = following.map(followedUser => ({
+        id: followedUser.id,
+        username: followedUser.username,
+        profilePictureUrl: followedUser.profile_pic_url,
+        followedSince: followedUser.followed_since,
+        stats: statsMap.get(followedUser.id) || { reviewCount: 0, averageStars: '0.0' },
+        relationship: {
+          canUnfollow: req.session.userId === targetUserId,
+          isFollowedByCurrentUser: currentUserFollowing.has(followedUser.id)
+        }
+      }));
+    } else {
+      // Basic info only for faster loading
+      formattedFollowing = following.map(followedUser => ({
+        id: followedUser.id,
+        username: followedUser.username,
+        profilePictureUrl: followedUser.profile_pic_url,
+        followedSince: followedUser.followed_since,
+        relationship: {
+          canUnfollow: req.session.userId === targetUserId,
+          isFollowedByCurrentUser: currentUserFollowing.has(followedUser.id)
+        }
+      }));
+    }
+
+    // Add cache headers for better performance
+    res.set({
+      'Cache-Control': 'public, max-age=180', // 3 minutes cache
+      'ETag': `"following-${targetUserId}-${page}-${limit}"`,
+      'X-Total-Count': totalFollowing.toString()
+    });
+
+    res.json({
+      success: true,
+      targetUser: {
+        id: targetUserId,
+        username: targetUser[0].username,
+        followingCount: targetUser[0].following_count
+      },
+      following: formattedFollowing,
+      pagination: {
+        currentPage: page,
+        limit,
+        total: totalFollowing,
+        totalPages: Math.ceil(totalFollowing / limit),
+        hasNext: (page * limit) < totalFollowing,
+        hasPrevious: page > 1
+      },
+      currentUser: {
+        id: req.session.userId || null,
+        canModify: req.session.userId === targetUserId
+      },
+      lazyLoading: {
+        statsIncluded: includeStats,
+        nextPageUrl: (page * limit) < totalFollowing ? 
+          `/api/users/${targetUserId}/following?page=${page + 1}&limit=${limit}` : null
+      }
+    });
+
+  } catch (err) {
+    console.error("Error al obtener lista de usuarios seguidos:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+/* ==============================
+   RUTAS DE SEGUIMIENTO DE USUARIOS
+============================== */
+
+// Seguir a un usuario
+app.post("/api/users/:userId/follow", async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "No autorizado" });
+  }
+
+  const followingId = parseInt(req.params.userId);
+  const followerId = req.session.userId;
+
+  // Validar que el ID del usuario sea válido
+  if (!followingId || isNaN(followingId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  // Prevenir auto-seguimiento
+  if (followerId === followingId) {
+    return res.status(400).json({ error: "No puedes seguirte a ti mismo" });
+  }
+
+  try {
+    // Verificar que el usuario a seguir existe y no está bloqueado
+    const [targetUser] = await pool.query(
+      "SELECT id, is_blocked FROM users WHERE id = ?",
+      [followingId]
+    );
+
+    if (targetUser.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    if (targetUser[0].is_blocked) {
+      return res.status(400).json({ error: "No puedes seguir a un usuario bloqueado" });
+    }
+
+    // Verificar que el usuario actual no está bloqueado
+    const [currentUser] = await pool.query(
+      "SELECT is_blocked FROM users WHERE id = ?",
+      [followerId]
+    );
+
+    if (currentUser.length === 0 || currentUser[0].is_blocked) {
+      return res.status(403).json({ error: "Tu cuenta está bloqueada" });
+    }
+
+    // Verificar si ya existe la relación de seguimiento
+    const [existingFollow] = await pool.query(
+      "SELECT id FROM user_follows WHERE follower_id = ? AND following_id = ?",
+      [followerId, followingId]
+    );
+
+    if (existingFollow.length > 0) {
+      return res.status(400).json({ error: "Ya sigues a este usuario" });
+    }
+
+    // Iniciar transacción para operaciones atómicas
+    await pool.query('START TRANSACTION');
+
+    try {
+      // Crear la relación de seguimiento
+      await pool.query(
+        "INSERT INTO user_follows (follower_id, following_id) VALUES (?, ?)",
+        [followerId, followingId]
+      );
+
+      // Actualizar contadores de seguidores y seguidos
+      await pool.query(
+        "UPDATE users SET following_count = following_count + 1 WHERE id = ?",
+        [followerId]
+      );
+
+      await pool.query(
+        "UPDATE users SET followers_count = followers_count + 1 WHERE id = ?",
+        [followingId]
+      );
+
+      // Confirmar transacción
+      await pool.query('COMMIT');
+
+      console.log(`Usuario ${followerId} ahora sigue a usuario ${followingId}`);
+
+      // Invalidate relevant caches
+      profileCache.delete(`profile_${followerId}`);
+      profileCache.delete(`profile_${followingId}`);
+      socialStatsCache.delete(`social_stats_${followerId}_${followerId}`);
+      socialStatsCache.delete(`social_stats_${followingId}_${followerId}`);
+      socialStatsCache.delete(`social_stats_${followerId}_anonymous`);
+      socialStatsCache.delete(`social_stats_${followingId}_anonymous`);
+
+      // Obtener contadores actualizados para la respuesta
+      const [updatedCounts] = await pool.query(
+        `SELECT 
+          (SELECT following_count FROM users WHERE id = ?) as following_count,
+          (SELECT followers_count FROM users WHERE id = ?) as followers_count`,
+        [followerId, followingId]
+      );
+
+      res.json({
+        success: true,
+        message: "Usuario seguido exitosamente",
+        following: true,
+        counts: {
+          follower_following_count: updatedCounts[0].following_count,
+          following_followers_count: updatedCounts[0].followers_count
+        }
+      });
+
+    } catch (transactionError) {
+      // Revertir transacción en caso de error
+      await pool.query('ROLLBACK');
+      throw transactionError;
+    }
+
+  } catch (err) {
+    console.error("Error al seguir usuario:", err);
+    
+    // Manejar errores específicos de base de datos
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ error: "Ya sigues a este usuario" });
+    }
+    
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Dejar de seguir a un usuario
+app.delete("/api/users/:userId/follow", async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "No autorizado" });
+  }
+
+  const followingId = parseInt(req.params.userId);
+  const followerId = req.session.userId;
+
+  // Validar que el ID del usuario sea válido
+  if (!followingId || isNaN(followingId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  // Prevenir auto-operaciones
+  if (followerId === followingId) {
+    return res.status(400).json({ error: "No puedes dejar de seguirte a ti mismo" });
+  }
+
+  try {
+    // Verificar que existe la relación de seguimiento
+    const [existingFollow] = await pool.query(
+      "SELECT id FROM user_follows WHERE follower_id = ? AND following_id = ?",
+      [followerId, followingId]
+    );
+
+    if (existingFollow.length === 0) {
+      return res.status(400).json({ error: "No sigues a este usuario" });
+    }
+
+    // Iniciar transacción para operaciones atómicas
+    await pool.query('START TRANSACTION');
+
+    try {
+      // Eliminar la relación de seguimiento
+      const [deleteResult] = await pool.query(
+        "DELETE FROM user_follows WHERE follower_id = ? AND following_id = ?",
+        [followerId, followingId]
+      );
+
+      if (deleteResult.affectedRows === 0) {
+        await pool.query('ROLLBACK');
+        return res.status(400).json({ error: "No sigues a este usuario" });
+      }
+
+      // Actualizar contadores de seguidores y seguidos (con protección contra valores negativos)
+      await pool.query(
+        "UPDATE users SET following_count = GREATEST(following_count - 1, 0) WHERE id = ?",
+        [followerId]
+      );
+
+      await pool.query(
+        "UPDATE users SET followers_count = GREATEST(followers_count - 1, 0) WHERE id = ?",
+        [followingId]
+      );
+
+      // Confirmar transacción
+      await pool.query('COMMIT');
+
+      console.log(`Usuario ${followerId} dejó de seguir a usuario ${followingId}`);
+
+      // Invalidate relevant caches
+      profileCache.delete(`profile_${followerId}`);
+      profileCache.delete(`profile_${followingId}`);
+      socialStatsCache.delete(`social_stats_${followerId}_${followerId}`);
+      socialStatsCache.delete(`social_stats_${followingId}_${followerId}`);
+      socialStatsCache.delete(`social_stats_${followerId}_anonymous`);
+      socialStatsCache.delete(`social_stats_${followingId}_anonymous`);
+
+      // Obtener contadores actualizados para la respuesta
+      const [updatedCounts] = await pool.query(
+        `SELECT 
+          (SELECT following_count FROM users WHERE id = ?) as following_count,
+          (SELECT followers_count FROM users WHERE id = ?) as followers_count`,
+        [followerId, followingId]
+      );
+
+      res.json({
+        success: true,
+        message: "Dejaste de seguir al usuario exitosamente",
+        following: false,
+        counts: {
+          follower_following_count: updatedCounts[0].following_count,
+          following_followers_count: updatedCounts[0].followers_count
+        }
+      });
+
+    } catch (transactionError) {
+      // Revertir transacción en caso de error
+      await pool.query('ROLLBACK');
+      throw transactionError;
+    }
+
+  } catch (err) {
+    console.error("Error al dejar de seguir usuario:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Verificar estado de seguimiento entre usuarios
+app.get("/api/users/:userId/follow-status", async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "No autorizado" });
+  }
+
+  const targetUserId = parseInt(req.params.userId);
+  const currentUserId = req.session.userId;
+
+  // Validar que el ID del usuario sea válido
+  if (!targetUserId || isNaN(targetUserId)) {
+    return res.status(400).json({ error: "ID de usuario inválido" });
+  }
+
+  try {
+    // Verificar si el usuario actual sigue al usuario objetivo
+    const [followStatus] = await pool.query(
+      "SELECT id FROM user_follows WHERE follower_id = ? AND following_id = ?",
+      [currentUserId, targetUserId]
+    );
+
+    // Obtener contadores sociales del usuario objetivo
+    const [userStats] = await pool.query(
+      "SELECT followers_count, following_count FROM users WHERE id = ?",
+      [targetUserId]
+    );
+
+    if (userStats.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    res.json({
+      success: true,
+      isFollowing: followStatus.length > 0,
+      canFollow: currentUserId !== targetUserId,
+      targetUser: {
+        id: targetUserId,
+        followers_count: userStats[0].followers_count,
+        following_count: userStats[0].following_count
+      }
+    });
+
+  } catch (err) {
+    console.error("Error al verificar estado de seguimiento:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+/* ==============================
+   RUTAS DE NOTIFICACIONES
+============================== */
+
+// Obtener contador de notificaciones no leídas - OPTIMIZED WITH CACHING
+app.get("/api/notifications/unread-count", async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "No autorizado" });
+  }
+
+  try {
+    // Try to get from cache first
+    const cacheKey = `notification_count_${req.session.userId}`;
+    const cachedCount = notificationCountCache.get(cacheKey);
+    
+    if (cachedCount !== null) {
+      res.set({
+        'Cache-Control': 'private, max-age=30',
+        'X-Cache': 'HIT'
+      });
+      
+      return res.json({
+        success: true,
+        unreadCount: cachedCount,
+        hasUnread: cachedCount > 0,
+        cached: true
+      });
+    }
+
+    // Cache miss - fetch from database with optimized query
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as unreadCount 
+       FROM notifications n
+       INNER JOIN users related_user ON n.related_user_id = related_user.id
+       INNER JOIN reviews r ON n.related_review_id = r.id
+       WHERE n.user_id = ? 
+         AND n.is_read = FALSE
+         AND related_user.is_blocked = FALSE
+         AND r.is_hidden = FALSE`,
+      [req.session.userId]
+    );
+
+    const unreadCount = countResult[0].unreadCount;
+
+    // Cache the result for 1 minute
+    notificationCountCache.set(cacheKey, unreadCount, 60000);
+
+    res.set({
+      'Cache-Control': 'private, max-age=30',
+      'X-Cache': 'MISS'
+    });
+
+    res.json({
+      success: true,
+      unreadCount: unreadCount,
+      hasUnread: unreadCount > 0,
+      cached: false
+    });
+
+  } catch (err) {
+    console.error("Error al obtener contador de notificaciones no leídas:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Obtener notificaciones del usuario
+app.get("/api/notifications", async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "No autorizado" });
+  }
+
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = parseInt(req.query.offset) || 0;
+
+    // Validar límites
+    if (limit < 1 || limit > 50) {
+      return res.status(400).json({ error: "Límite debe estar entre 1 y 50" });
+    }
+
+    // Obtener notificaciones del usuario con información relacionada
+    const [notifications] = await pool.query(
+      `SELECT 
+        n.id,
+        n.type,
+        n.is_read,
+        n.created_at,
+        related_user.id as related_user_id,
+        related_user.username as related_username,
+        related_user.profile_pic_url as related_user_profile_pic,
+        r.id as review_id,
+        r.spotify_id,
+        r.stars,
+        r.comment
+      FROM notifications n
+      INNER JOIN users related_user ON n.related_user_id = related_user.id
+      INNER JOIN reviews r ON n.related_review_id = r.id
+      WHERE n.user_id = ? 
+        AND related_user.is_blocked = FALSE
+        AND r.is_hidden = FALSE
+      ORDER BY n.created_at DESC
+      LIMIT ? OFFSET ?`,
+      [req.session.userId, limit, offset]
+    );
+
+    // Obtener información de Spotify para las reseñas si hay notificaciones
+    let enrichedNotifications = notifications;
+
+    if (notifications.length > 0) {
+      try {
+        const token = await getToken();
+        if (token) {
+          const spotifyIds = [...new Set(notifications.map(n => n.spotify_id))];
+          const idsString = spotifyIds.join(",");
+
+          const response = await fetch(
+            `https://api.spotify.com/v1/albums?ids=${idsString}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            const albumMap = new Map();
+
+            if (data.albums) {
+              data.albums.filter(a => a !== null).forEach(album => {
+                albumMap.set(album.id, {
+                  albumName: album.name,
+                  artistName: album.artists[0]?.name || 'Artista Desconocido',
+                  albumCoverUrl: album.images[0]?.url || 'https://placehold.co/300x300/333/fff?text=No+Cover'
+                });
+              });
+            }
+
+            // Enriquecer notificaciones con información de Spotify
+            enrichedNotifications = notifications.map(notification => {
+              const albumInfo = albumMap.get(notification.spotify_id) || {};
+              return {
+                id: notification.id,
+                type: notification.type,
+                isRead: notification.is_read,
+                createdAt: notification.created_at,
+                relatedUser: {
+                  id: notification.related_user_id,
+                  username: notification.related_username,
+                  profilePicUrl: notification.related_user_profile_pic
+                },
+                review: {
+                  id: notification.review_id,
+                  spotifyId: notification.spotify_id,
+                  stars: notification.stars,
+                  comment: notification.comment
+                },
+                album: {
+                  name: albumInfo.albumName || 'Álbum Desconocido',
+                  artist: albumInfo.artistName || 'Artista Desconocido',
+                  coverUrl: albumInfo.albumCoverUrl || 'https://placehold.co/300x300/333/fff?text=No+Cover'
+                }
+              };
+            });
+          }
+        }
+      } catch (spotifyError) {
+        console.warn("Error obteniendo datos de Spotify para notificaciones:", spotifyError);
+        // Continuar con datos básicos si Spotify falla
+        enrichedNotifications = notifications.map(notification => ({
+          id: notification.id,
+          type: notification.type,
+          isRead: notification.is_read,
+          createdAt: notification.created_at,
+          relatedUser: {
+            id: notification.related_user_id,
+            username: notification.related_username,
+            profilePicUrl: notification.related_user_profile_pic
+          },
+          review: {
+            id: notification.review_id,
+            spotifyId: notification.spotify_id,
+            stars: notification.stars,
+            comment: notification.comment
+          },
+          album: {
+            name: 'Álbum Desconocido',
+            artist: 'Artista Desconocido',
+            coverUrl: 'https://placehold.co/300x300/333/fff?text=No+Cover'
+          }
+        }));
+      }
+    }
+
+    // Obtener total de notificaciones para paginación
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total 
+       FROM notifications n
+       INNER JOIN users related_user ON n.related_user_id = related_user.id
+       INNER JOIN reviews r ON n.related_review_id = r.id
+       WHERE n.user_id = ? 
+         AND related_user.is_blocked = FALSE
+         AND r.is_hidden = FALSE`,
+      [req.session.userId]
+    );
+
+    res.json({
+      success: true,
+      notifications: enrichedNotifications,
+      pagination: {
+        total: countResult[0].total,
+        limit,
+        offset,
+        hasMore: (offset + limit) < countResult[0].total
+      }
+    });
+
+  } catch (err) {
+    console.error("Error al obtener notificaciones:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Marcar notificación como leída
+app.post("/api/notifications/:id/read", async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "No autorizado" });
+  }
+
+  const notificationId = parseInt(req.params.id);
+
+  // Validar ID de notificación
+  if (!notificationId || isNaN(notificationId)) {
+    return res.status(400).json({ error: "ID de notificación inválido" });
+  }
+
+  try {
+    // Verificar que la notificación pertenece al usuario actual
+    const [notification] = await pool.query(
+      "SELECT id, is_read FROM notifications WHERE id = ? AND user_id = ?",
+      [notificationId, req.session.userId]
+    );
+
+    if (notification.length === 0) {
+      return res.status(404).json({ error: "Notificación no encontrada" });
+    }
+
+    if (notification[0].is_read) {
+      return res.json({
+        success: true,
+        message: "La notificación ya estaba marcada como leída",
+        alreadyRead: true
+      });
+    }
+
+    // Marcar como leída
+    const [result] = await pool.query(
+      "UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?",
+      [notificationId, req.session.userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(500).json({ error: "No se pudo marcar la notificación como leída" });
+    }
+
+    console.log(`Notificación ${notificationId} marcada como leída por usuario ${req.session.userId}`);
+
+    // Invalidate notification count cache
+    notificationCountCache.delete(`notification_count_${req.session.userId}`);
+
+    res.json({
+      success: true,
+      message: "Notificación marcada como leída",
+      alreadyRead: false
+    });
+
+  } catch (err) {
+    console.error("Error al marcar notificación como leída:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+/* ==============================
+   FUNCIONES AUXILIARES DE NOTIFICACIONES
+============================== */
+
+// Función para generar notificaciones cuando se publica una reseña
+async function generateNotificationsForNewReview(reviewId, authorId, spotifyId) {
+  try {
+    // Obtener todos los seguidores del autor de la reseña
+    const [followers] = await pool.query(
+      `SELECT uf.follower_id 
+       FROM user_follows uf
+       INNER JOIN users u ON uf.follower_id = u.id
+       WHERE uf.following_id = ? AND u.is_blocked = FALSE`,
+      [authorId]
+    );
+
+    if (followers.length === 0) {
+      console.log(`Usuario ${authorId} no tiene seguidores, no se generan notificaciones`);
+      return { success: true, notificationsCreated: 0 };
+    }
+
+    // Crear notificaciones para todos los seguidores
+    const notificationPromises = followers.map(follower => {
+      return pool.query(
+        `INSERT INTO notifications (user_id, type, related_user_id, related_review_id) 
+         VALUES (?, 'new_review', ?, ?)`,
+        [follower.follower_id, authorId, reviewId]
+      );
+    });
+
+    await Promise.all(notificationPromises);
+
+    console.log(`Generadas ${followers.length} notificaciones para la reseña ${reviewId} del usuario ${authorId}`);
+
+    return { 
+      success: true, 
+      notificationsCreated: followers.length,
+      followers: followers.map(f => f.follower_id)
+    };
+
+  } catch (err) {
+    console.error("Error generando notificaciones para nueva reseña:", err);
+    return { 
+      success: false, 
+      error: err.message,
+      notificationsCreated: 0
+    };
+  }
+}
+
+/* ==============================
    RUTAS DE SPOTIFY
 ============================== */
 app.get("/search", async (req, res) => {
@@ -1427,13 +2898,41 @@ app.post("/reviews/album/:spotify_id", async (req, res) => {
     return res.status(400).json({ success: false, error: "Datos inválidos" });
 
   try {
+    // Crear la reseña
     const [result] = await pool.query(
       "INSERT INTO reviews (type, spotify_id, user_id, stars, comment) VALUES (?, ?, ?, ?, ?)",
       ["album", spotify_id, req.session.userId, stars, comment]
     );
-    res.json({ success: true, id: result.insertId });
+
+    const reviewId = result.insertId;
+    console.log(`Nueva reseña creada: ID ${reviewId} por usuario ${req.session.userId}`);
+
+    // Invalidate relevant caches
+    profileCache.delete(`profile_${req.session.userId}`);
+    socialStatsCache.delete(`social_stats_${req.session.userId}_${req.session.userId}`);
+    socialStatsCache.delete(`social_stats_${req.session.userId}_anonymous`);
+    topReviewsCache.delete(`top_reviews_${req.session.userId}_5`);
+    
+    // Invalidate notification count cache for all followers (will be updated when they check)
+    // This is done asynchronously to not impact response time
+
+    // Generar notificaciones para seguidores de forma asíncrona
+    // No esperamos el resultado para no afectar el rendimiento de la respuesta
+    generateNotificationsForNewReview(reviewId, req.session.userId, spotify_id)
+      .then(notificationResult => {
+        if (notificationResult.success) {
+          console.log(`Notificaciones generadas exitosamente: ${notificationResult.notificationsCreated} notificaciones`);
+        } else {
+          console.error("Error generando notificaciones:", notificationResult.error);
+        }
+      })
+      .catch(err => {
+        console.error("Error crítico generando notificaciones:", err);
+      });
+
+    res.json({ success: true, id: reviewId });
   } catch (err) {
-    console.error(err);
+    console.error("Error creando reseña:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -2131,6 +3630,99 @@ app.get("/admin/reports/stats", requireAdmin, async (req, res) => {
 
   } catch (err) {
     console.error("Error obteniendo estadísticas de reportes:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Cache statistics and management (solo admins)
+app.get("/admin/cache/stats", requireAdmin, async (req, res) => {
+  try {
+    const cacheStats = {
+      profileCache: profileCache.getStats(),
+      socialStatsCache: socialStatsCache.getStats(),
+      topReviewsCache: topReviewsCache.getStats(),
+      notificationCountCache: notificationCountCache.getStats(),
+      timestamp: new Date().toISOString()
+    };
+
+    res.json({
+      success: true,
+      cacheStats,
+      summary: {
+        totalCaches: 4,
+        totalItems: cacheStats.profileCache.size + 
+                   cacheStats.socialStatsCache.size + 
+                   cacheStats.topReviewsCache.size + 
+                   cacheStats.notificationCountCache.size,
+        averageHitRate: (
+          cacheStats.profileCache.hitRate + 
+          cacheStats.socialStatsCache.hitRate + 
+          cacheStats.topReviewsCache.hitRate + 
+          cacheStats.notificationCountCache.hitRate
+        ) / 4
+      }
+    });
+
+  } catch (err) {
+    console.error("Error obteniendo estadísticas de cache:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Clear specific cache (solo admins)
+app.post("/admin/cache/clear", requireAdmin, async (req, res) => {
+  try {
+    const { cacheType } = req.body;
+    
+    let cleared = false;
+    let message = "";
+
+    switch (cacheType) {
+      case 'profile':
+        profileCache.clear();
+        cleared = true;
+        message = "Profile cache cleared";
+        break;
+      case 'socialStats':
+        socialStatsCache.clear();
+        cleared = true;
+        message = "Social stats cache cleared";
+        break;
+      case 'topReviews':
+        topReviewsCache.clear();
+        cleared = true;
+        message = "Top reviews cache cleared";
+        break;
+      case 'notifications':
+        notificationCountCache.clear();
+        cleared = true;
+        message = "Notification count cache cleared";
+        break;
+      case 'all':
+        profileCache.clear();
+        socialStatsCache.clear();
+        topReviewsCache.clear();
+        notificationCountCache.clear();
+        cleared = true;
+        message = "All caches cleared";
+        break;
+      default:
+        return res.status(400).json({ 
+          error: "Invalid cache type. Use: profile, socialStats, topReviews, notifications, or all" 
+        });
+    }
+
+    console.log(`Admin ${req.session.userId} cleared cache: ${cacheType}`);
+
+    res.json({
+      success: cleared,
+      message,
+      cacheType,
+      clearedAt: new Date().toISOString()
+    });
+
+  } catch (err) {
+    console.error("Error clearing cache:", err);
     res.status(500).json({ error: "Error interno del servidor" });
   }
 });

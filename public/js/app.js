@@ -45,7 +45,11 @@ async function checkSession() {
         console.log('User authenticated - showing main application');
         currentUserId = data.userId;
         currentUsername = data.username;
-        if (userDisplayEl) userDisplayEl.textContent = data.username;
+        if (userDisplayEl) {
+            userDisplayEl.textContent = data.username;
+            userDisplayEl.dataset.userId = data.userId;
+            userDisplayEl.dataset.username = data.username;
+        }
         
         // Enhanced profile picture loading with better persistence handling
         const profilePictureUrl = data.profilePictureUrl || data.profile_pic_url;
@@ -74,6 +78,11 @@ async function checkSession() {
         
         // Show main application for authenticated users
         showApp();
+        
+        // Initialize notifications for authenticated users
+        setTimeout(() => {
+            notificationSystem.updateUnreadCount();
+        }, 1000);
     } else {
         // User is not authenticated - show landing page
         console.log('User not authenticated - showing landing page');
@@ -124,6 +133,11 @@ function updateNavbarProfilePicture(imageUrl) {
   } else {
     // Use placeholder
     navbarProfilePicture.src = '/icons/icono_ftperfil_predeterminado.svg';
+  }
+  
+  // Add user ID data attribute for clickable functionality
+  if (currentUserId) {
+    navbarProfilePicture.dataset.userId = currentUserId;
   }
 }
 
@@ -1073,6 +1087,61 @@ window.handleAlbumCardKeydown = handleAlbumCardKeydown;
 // ========================
 
 // ========================
+// PROFILE VIEWER INTEGRATION
+// ========================
+
+// Function to make username clickable
+function makeUsernameClickable(username, userId, element = null) {
+    if (!username || !userId) return username;
+    
+    const clickableUsername = `<span class="profile-username-clickable text-primary" 
+                                    style="cursor: pointer; text-decoration: underline;" 
+                                    onclick="profileViewer.showUserProfile(${userId})"
+                                    title="Ver perfil de ${username}">
+                                ${username}
+                              </span>`;
+    
+    if (element) {
+        element.innerHTML = clickableUsername;
+        return element;
+    }
+    
+    return clickableUsername;
+}
+
+// Function to make profile picture clickable
+function makeProfilePictureClickable(imgElement, userId) {
+    if (!imgElement || !userId) return;
+    
+    imgElement.style.cursor = 'pointer';
+    imgElement.classList.add('profile-picture-clickable');
+    imgElement.title = 'Ver perfil de usuario';
+    imgElement.onclick = () => profileViewer.showUserProfile(userId);
+}
+
+// Function to enhance existing review elements with clickable usernames and pictures
+function enhanceReviewElementsWithClickableProfiles() {
+    // Find all review username elements and make them clickable
+    const reviewUsernames = document.querySelectorAll('.review-username');
+    reviewUsernames.forEach(element => {
+        const username = element.textContent;
+        const userId = element.dataset.userId;
+        if (username && userId) {
+            makeUsernameClickable(username, userId, element);
+        }
+    });
+    
+    // Find all profile pictures in reviews and make them clickable
+    const reviewProfilePics = document.querySelectorAll('.review-profile-pic');
+    reviewProfilePics.forEach(element => {
+        const userId = element.dataset.userId;
+        if (userId) {
+            makeProfilePictureClickable(element, userId);
+        }
+    });
+}
+
+// ========================
 // FUNCIONES AUXILIARES
 // ========================
 function createStars(rating) {
@@ -1232,8 +1301,15 @@ async function renderRandomHighStarReviews() {
               </div>
             </div>
             <div class="d-flex align-items-center mb-2">
-              <img src="${profileSrc}" class="rounded-circle me-2" style="width: 30px; height: 30px; object-fit: cover;" onerror="handleImageError(this, '30')">
-              <p class="card-text m-0 small">Por <strong style="color: #E0E0E0;">${review.username}</strong></p>
+              <img src="${profileSrc}" 
+                   class="rounded-circle me-2" 
+                   style="width: 30px; height: 30px; object-fit: cover;" 
+                   data-user-id="${review.user_id}"
+                   onerror="handleImageError(this, '30')"
+                   alt="Foto de perfil de ${review.username}">
+              <p class="card-text m-0 small">Por <strong class="review-username" 
+                                                        data-user-id="${review.user_id}"
+                                                        data-username="${review.username}">${review.username}</strong></p>
             </div>
             <p class="card-text text-warning">${createStars(review.stars)}</p>
             <p class="small" style="color: #E0E0E0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">${review.comment}</p>
@@ -1241,6 +1317,9 @@ async function renderRandomHighStarReviews() {
         </div>
       `;
       row.appendChild(col);
+      
+      // Enhance the newly added content
+      enhanceNewContent(col);
     });
   } catch (err) {
     console.error("Error cargando random reviews:", err);
@@ -1314,27 +1393,50 @@ async function loadUserProfile(userId) {
     if (profileUsername) profileUsername.textContent = "Cargando perfil...";
     if (totalReviewsEl) totalReviewsEl.textContent = "0";
     if (avgStarsEl) avgStarsEl.textContent = "0.0";
+    
+    // Reset social stats
+    const followersCountEl = document.getElementById('followersCount');
+    const followingCountEl = document.getElementById('followingCount');
+    if (followersCountEl) followersCountEl.textContent = "0";
+    if (followingCountEl) followingCountEl.textContent = "0";
+    
     if (topReviewsContainer) topReviewsContainer.innerHTML = '';
     if (noTopReviewsMessage) noTopReviewsMessage.style.display = 'none';
     
     try {
-        const response = await fetch(`${API_BASE_URL}/user/profile/${userId}`, { credentials: "include" });
+        // Load both profile data and social stats
+        const [profileResponse, socialStatsResponse] = await Promise.all([
+            fetch(`${API_BASE_URL}/user/profile/${userId}`, { credentials: "include" }),
+            fetch(`${API_BASE_URL}/api/users/${userId}/social-stats`, { credentials: "include" })
+        ]);
         
-        if (response.status === 401 || response.status === 403) {
+        if (profileResponse.status === 401 || profileResponse.status === 403) {
             await checkSession();
             return;
         }
         
-        if (!response.ok) {
-            throw new Error(`Error al cargar el perfil: Estado ${response.status}`);
+        if (!profileResponse.ok) {
+            throw new Error(`Error al cargar el perfil: Estado ${profileResponse.status}`);
         }
         
-        const data = await response.json();
+        const data = await profileResponse.json();
         console.log('Datos del perfil recibidos:', data);
         
         if (profileUsername) profileUsername.textContent = data.username || 'Usuario Desconocido';
         if (totalReviewsEl) totalReviewsEl.textContent = data.totalReviews;
         if (avgStarsEl) avgStarsEl.textContent = parseFloat(data.avgStars).toFixed(1);
+        
+        // Load social stats if available
+        if (socialStatsResponse.ok) {
+            const socialData = await socialStatsResponse.json();
+            if (socialData.success && followersCountEl && followingCountEl) {
+                followersCountEl.textContent = socialData.socialStats.followersCount;
+                followingCountEl.textContent = socialData.socialStats.followingCount;
+            }
+        }
+        
+        // Update notifications count in profile
+        updateProfileNotificationCount();
         
         // Enhanced profile picture loading with improved error handling and validation
         if (profilePictureEl) {
@@ -1391,6 +1493,9 @@ document.addEventListener("DOMContentLoaded", () => {
         photoFileInput.addEventListener('change', uploadProfilePicture);
     }
 
+    // Initialize notification system
+    notificationSystem.init();
+
     // Event listener para botón de login en landing page
     const landingLoginBtn = document.getElementById("landingLoginBtn");
     if (landingLoginBtn) {
@@ -1441,6 +1546,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     
                     // Redirect to main application after successful login
                     showApp();
+                    
+                    // Initialize notifications after successful login
+                    setTimeout(() => {
+                        notificationSystem.updateUnreadCount();
+                    }, 1000);
                 } else {
                     console.log(data.error);
                     
@@ -1565,28 +1675,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const arrowRight = document.getElementById("arrowRight");
     const topAlbumsRow = document.getElementById("topAlbumsRow");
     
-    console.log('Setting up carousel event listeners:', {
-        arrowLeft: !!arrowLeft,
-        arrowRight: !!arrowRight,
-        topAlbumsRow: !!topAlbumsRow
-    });
-    
     if (arrowLeft && arrowRight) {
         arrowLeft.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Left arrow clicked - using fixed function');
             scrollCarouselFixed('left');
         });
         
         arrowRight.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Right arrow clicked - using fixed function');
             scrollCarouselFixed('right');
         });
-        
-        console.log('Carousel click listeners added successfully');
     }
     
     // Event listener para actualizar flechas cuando se hace scroll
@@ -1594,7 +1694,6 @@ document.addEventListener("DOMContentLoaded", () => {
         topAlbumsRow.addEventListener("scroll", () => {
             updateCarouselArrows();
         });
-        console.log('Carousel scroll listener added');
     }
 });
 
@@ -2583,8 +2682,13 @@ window.renderAlbumDetailsLogic = async function(spotify_id) {
                                 <img src="${profileSrc}" 
                                      class="rounded-circle me-2" 
                                      style="width: 60px; height: 60px; object-fit: cover;"
-                                     onerror="handleImageError(this, '60')">
-                                <strong class="review-username" style="color: #000000 !important;">${r.username}</strong>
+                                     data-user-id="${r.user_id}"
+                                     onerror="handleImageError(this, '60')"
+                                     alt="Foto de perfil de ${r.username}">
+                                <strong class="review-username" 
+                                        style="color: #000000 !important;"
+                                        data-user-id="${r.user_id}"
+                                        data-username="${r.username}">${r.username}</strong>
                             </div>
                             <div class="d-flex align-items-center">
                                 <span class="text-warning">${createStars(r.stars)}</span>
@@ -2596,6 +2700,9 @@ window.renderAlbumDetailsLogic = async function(spotify_id) {
                 `;
             }).join('');
             revCont.innerHTML = reviewsHtml;
+            
+            // Enhance the newly added review content
+            enhanceNewContent(revCont);
         } else {
             revCont.innerHTML = "<small class='text-muted'>Sin reseñas.</small>";
         }
@@ -2695,6 +2802,431 @@ window.handleImageError = handleImageError;
 window.handleAlbumImageError = handleAlbumImageError;
 window.handleCarouselImageError = handleCarouselImageError;
 window.renderAlbumDetailsLogic = renderAlbumDetailsLogic;
+
+// ========================
+// SISTEMA DE NOTIFICACIONES
+// ========================
+
+const notificationSystem = {
+    panel: null,
+    overlay: null,
+    badge: null,
+    isOpen: false,
+    notifications: [],
+    unreadCount: 0,
+    
+    init() {
+        this.panel = document.getElementById('notificationPanel');
+        this.overlay = document.getElementById('notificationOverlay');
+        this.badge = document.getElementById('notificationBadge');
+        this.setupEventListeners();
+        this.startPeriodicCheck();
+    },
+    
+    setupEventListeners() {
+        // Notification link click
+        const notificationsLink = document.getElementById('notificationsLink');
+        if (notificationsLink) {
+            notificationsLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.togglePanel();
+            });
+        }
+        
+        // Close panel button
+        const closeBtn = document.getElementById('closeNotificationPanel');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                this.closePanel();
+            });
+        }
+        
+        // Overlay click to close
+        if (this.overlay) {
+            this.overlay.addEventListener('click', () => {
+                this.closePanel();
+            });
+        }
+        
+        // Escape key to close
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.isOpen) {
+                this.closePanel();
+            }
+        });
+    },
+    
+    async togglePanel() {
+        if (this.isOpen) {
+            this.closePanel();
+        } else {
+            await this.openPanel();
+        }
+    },
+    
+    async openPanel() {
+        this.isOpen = true;
+        
+        if (this.panel && this.overlay) {
+            this.overlay.style.display = 'block';
+            this.panel.style.display = 'flex';
+            
+            // Trigger reflow for animation
+            this.overlay.offsetHeight;
+            this.panel.offsetHeight;
+            
+            this.overlay.classList.add('show');
+            this.panel.classList.add('show');
+        }
+        
+        // Load notifications when opening
+        await this.loadNotifications();
+    },
+    
+    closePanel() {
+        this.isOpen = false;
+        
+        if (this.panel && this.overlay) {
+            this.overlay.classList.remove('show');
+            this.panel.classList.remove('show');
+            
+            setTimeout(() => {
+                this.overlay.style.display = 'none';
+                this.panel.style.display = 'none';
+            }, 300);
+        }
+    },
+    
+    async loadNotifications() {
+        this.showLoading();
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/notifications`, {
+                credentials: 'include'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.notifications = data.notifications || [];
+                this.renderNotifications();
+            } else {
+                throw new Error(data.error || 'Error loading notifications');
+            }
+            
+        } catch (error) {
+            console.error('Error loading notifications:', error);
+            this.showError();
+        }
+    },
+    
+    renderNotifications() {
+        const container = document.getElementById('notificationsList');
+        const loading = document.getElementById('notificationsLoading');
+        const empty = document.getElementById('notificationsEmpty');
+        const error = document.getElementById('notificationsError');
+        
+        // Hide all states
+        loading.style.display = 'none';
+        empty.style.display = 'none';
+        error.style.display = 'none';
+        
+        if (this.notifications.length === 0) {
+            empty.style.display = 'block';
+            container.innerHTML = '';
+            return;
+        }
+        
+        let notificationsHTML = '';
+        
+        this.notifications.forEach(notification => {
+            const isUnread = !notification.is_read;
+            const timeAgo = this.formatTimeAgo(notification.created_at);
+            const stars = "★".repeat(notification.stars || 0);
+            
+            notificationsHTML += `
+                <div class="notification-item ${isUnread ? 'unread' : ''}" 
+                     data-notification-id="${notification.id}"
+                     onclick="notificationSystem.handleNotificationClick(${notification.id}, '${notification.spotify_id}')">
+                    <div class="notification-content">
+                        <img src="${this.getProfileImageUrl(notification.related_user_profile_pic)}" 
+                             alt="${notification.related_user_username}" 
+                             class="notification-avatar"
+                             onerror="handleImageError(this, '40')">
+                        <div class="notification-details">
+                            <div class="notification-text">
+                                <strong>${notification.related_user_username}</strong> 
+                                reseñó un álbum
+                            </div>
+                            <div class="notification-album">
+                                <img src="${notification.album_image_url || '/icons/logotipo.jpg'}" 
+                                     alt="${notification.album_name}"
+                                     onerror="this.src='/icons/logotipo.jpg'">
+                                <span>${notification.album_name} - ${notification.artist_name}</span>
+                                <span class="notification-rating">${stars}</span>
+                            </div>
+                            <div class="notification-time">${timeAgo}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = notificationsHTML;
+    },
+    
+    showLoading() {
+        const loading = document.getElementById('notificationsLoading');
+        const empty = document.getElementById('notificationsEmpty');
+        const error = document.getElementById('notificationsError');
+        
+        loading.style.display = 'block';
+        empty.style.display = 'none';
+        error.style.display = 'none';
+    },
+    
+    showError() {
+        const loading = document.getElementById('notificationsLoading');
+        const empty = document.getElementById('notificationsEmpty');
+        const error = document.getElementById('notificationsError');
+        
+        loading.style.display = 'none';
+        empty.style.display = 'none';
+        error.style.display = 'block';
+    },
+    
+    async handleNotificationClick(notificationId, spotifyId) {
+        // Mark as read
+        await this.markAsRead(notificationId);
+        
+        // Close panel
+        this.closePanel();
+        
+        // Navigate to album details
+        if (spotifyId && window.renderAlbumDetailsLogic) {
+            window.renderAlbumDetailsLogic(spotifyId);
+        }
+    },
+    
+    async markAsRead(notificationId) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/notifications/${notificationId}/read`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+            
+            if (response.ok) {
+                // Update local notification state
+                const notification = this.notifications.find(n => n.id === notificationId);
+                if (notification) {
+                    notification.is_read = true;
+                }
+                
+                // Update UI
+                const notificationElement = document.querySelector(`[data-notification-id="${notificationId}"]`);
+                if (notificationElement) {
+                    notificationElement.classList.remove('unread');
+                }
+                
+                // Update badge
+                await this.updateUnreadCount();
+            }
+        } catch (error) {
+            console.error('Error marking notification as read:', error);
+        }
+    },
+    
+    async markAllAsRead() {
+        const unreadNotifications = this.notifications.filter(n => !n.is_read);
+        
+        if (unreadNotifications.length === 0) {
+            return;
+        }
+        
+        try {
+            // Mark all unread notifications as read
+            const promises = unreadNotifications.map(notification => 
+                this.markAsRead(notification.id)
+            );
+            
+            await Promise.all(promises);
+            
+            // Refresh the panel
+            await this.loadNotifications();
+        } catch (error) {
+            console.error('Error marking all notifications as read:', error);
+        }
+    },
+    
+    async updateUnreadCount() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/notifications/unread-count`, {
+                credentials: 'include'
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    return;
+                }
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            this.unreadCount = data.unreadCount || 0;
+            this.updateBadge();
+        } catch (error) {
+            console.error('Error updating unread count:', error);
+            // Don't show error to user for background updates
+        }
+    },
+    
+    updateBadge() {
+        if (!this.badge) return;
+        
+        if (this.unreadCount > 0) {
+            this.badge.textContent = this.unreadCount > 99 ? '99+' : this.unreadCount;
+            this.badge.style.display = 'inline-block';
+        } else {
+            this.badge.style.display = 'none';
+        }
+        
+        // Also update profile notification count if profile is visible
+        if (typeof updateProfileNotificationCount === 'function') {
+            updateProfileNotificationCount();
+        }
+    },
+    
+    startPeriodicCheck() {
+        // Check for new notifications every 30 seconds
+        setInterval(async () => {
+            if (currentUserId) {
+                const previousCount = this.unreadCount;
+                await this.updateUnreadCount();
+                
+                // Show toast if new notifications arrived
+                if (this.unreadCount > previousCount) {
+                    this.showNewNotificationToast(this.unreadCount - previousCount);
+                }
+            }
+        }, 30000);
+        
+        // Initial check
+        if (currentUserId) {
+            setTimeout(() => this.updateUnreadCount(), 1000);
+        }
+    },
+    
+    showNewNotificationToast(count) {
+        const message = count === 1 ? 
+            'Tienes una nueva notificación' : 
+            `Tienes ${count} nuevas notificaciones`;
+            
+        this.showToast(message, 'info');
+    },
+    
+    showToast(message, type = 'info') {
+        // Create toast container if it doesn't exist
+        let toastContainer = document.getElementById('notificationToasts');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'notificationToasts';
+            toastContainer.style.cssText = `
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                z-index: 10002;
+                max-width: 350px;
+            `;
+            document.body.appendChild(toastContainer);
+        }
+        
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `notification-toast notification-toast-${type}`;
+        toast.style.cssText = `
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transform: translateX(100%);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            cursor: pointer;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+        `;
+        
+        toast.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <img src="/icons/icono_reporte.svg" alt="Notification" style="width: 20px; height: 20px; filter: brightness(0) invert(1);">
+                <span>${message}</span>
+            </div>
+        `;
+        
+        // Add click handler to open notifications
+        toast.addEventListener('click', () => {
+            this.openPanel();
+            toast.remove();
+        });
+        
+        // Add to container
+        toastContainer.appendChild(toast);
+        
+        // Animate in
+        setTimeout(() => {
+            toast.style.transform = 'translateX(0)';
+        }, 100);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            toast.style.transform = 'translateX(100%)';
+            toast.style.opacity = '0';
+            
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
+        }, 5000);
+    },
+    
+    getProfileImageUrl(profilePicUrl) {
+        if (!profilePicUrl) {
+            return '/icons/icono_ftperfil_predeterminado.svg';
+        }
+        return generateEnhancedCacheBustUrl(profilePicUrl);
+    },
+    
+    formatTimeAgo(dateString) {
+        const now = new Date();
+        const date = new Date(dateString);
+        const diffInSeconds = Math.floor((now - date) / 1000);
+        
+        if (diffInSeconds < 60) {
+            return 'Hace un momento';
+        } else if (diffInSeconds < 3600) {
+            const minutes = Math.floor(diffInSeconds / 60);
+            return `Hace ${minutes} minuto${minutes > 1 ? 's' : ''}`;
+        } else if (diffInSeconds < 86400) {
+            const hours = Math.floor(diffInSeconds / 3600);
+            return `Hace ${hours} hora${hours > 1 ? 's' : ''}`;
+        } else if (diffInSeconds < 604800) {
+            const days = Math.floor(diffInSeconds / 86400);
+            return `Hace ${days} día${days > 1 ? 's' : ''}`;
+        } else {
+            return date.toLocaleDateString('es-ES', {
+                day: 'numeric',
+                month: 'short'
+            });
+        }
+    }
+};
 
 // ========================
 // SISTEMA DE REPORTES
@@ -2830,64 +3362,12 @@ function showReportMessage(message, type) {
 // FUNCIONALIDAD DEL CAROUSEL
 // ========================
 
-// Función de test para verificar el scroll
-function testScroll() {
-    const container = document.getElementById("topAlbumsRow");
-    if (!container) {
-        console.log('Container not found for test');
-        return;
-    }
-    
-    console.log('=== SCROLL TEST ===');
-    console.log('Initial state:', {
-        scrollLeft: container.scrollLeft,
-        scrollWidth: container.scrollWidth,
-        clientWidth: container.clientWidth,
-        canScroll: container.scrollWidth > container.clientWidth
-    });
-    
-    // Test scroll directo
-    console.log('Testing direct scroll...');
-    container.scrollLeft = 100;
-    console.log('After setting scrollLeft to 100:', container.scrollLeft);
-    
-    // Reset
-    container.scrollLeft = 0;
-    
-    // Test scrollTo
-    console.log('Testing scrollTo...');
-    container.scrollTo({ left: 100, behavior: 'instant' });
-    console.log('After scrollTo 100:', container.scrollLeft);
-    
-    // Reset
-    container.scrollLeft = 0;
-    console.log('=== END TEST ===');
-}
-
-// Función de prueba para scroll manual (integrated into main testScroll function above)
-// window.testScroll = testScroll; // Already declared above
-
 // Nueva función de scroll simplificada
 function scrollCarousel(direction) {
-    console.log('scrollCarousel called with direction:', direction);
     const container = document.getElementById("topAlbumsRow");
     if (!container) {
-        console.log('Container not found!');
         return;
     }
-    
-    // Debug completo del contenedor
-    console.log('Container debug:', {
-        scrollWidth: container.scrollWidth,
-        clientWidth: container.clientWidth,
-        scrollLeft: container.scrollLeft,
-        offsetWidth: container.offsetWidth,
-        style: {
-            overflowX: getComputedStyle(container).overflowX,
-            display: getComputedStyle(container).display,
-            position: getComputedStyle(container).position
-        }
-    });
     
     // Calcular scroll amount basado en el ancho de las cards
     const cardWidth = 220; // 200px + 20px gap
@@ -2903,29 +3383,15 @@ function scrollCarousel(direction) {
         targetScroll = Math.min(maxScroll, currentScroll + scrollAmount);
     }
     
-    console.log('Scrolling from', currentScroll, 'to', targetScroll);
-    
-    // Probar scroll directo primero
-    console.log('Setting scrollLeft directly to:', targetScroll);
     container.scrollLeft = targetScroll;
-    
-    // Verificar inmediatamente
-    console.log('Immediate scrollLeft after setting:', container.scrollLeft);
     
     // Verificar después de un momento para animaciones
     setTimeout(() => {
-        console.log('ScrollLeft after 100ms:', container.scrollLeft);
-        
         if (container.scrollLeft !== targetScroll) {
-            console.log('Direct scroll failed, trying scrollTo...');
             container.scrollTo({
                 left: targetScroll,
                 behavior: 'smooth'
             });
-            
-            setTimeout(() => {
-                console.log('ScrollLeft after scrollTo:', container.scrollLeft);
-            }, 200);
         }
     }, 100);
     
@@ -2958,7 +3424,6 @@ function updateCarouselArrows() {
     const arrowRight = document.getElementById("arrowRight");
     
     if (!container || !arrowLeft || !arrowRight) {
-        console.log('updateCarouselArrows: Missing elements', {container: !!container, arrowLeft: !!arrowLeft, arrowRight: !!arrowRight});
         return;
     }
     
@@ -2976,15 +3441,6 @@ function updateCarouselArrows() {
     
     const canScrollLeft = container.scrollLeft > 5; // Pequeño margen para evitar problemas de precisión
     const canScrollRight = container.scrollLeft < (container.scrollWidth - container.clientWidth - 5);
-    
-    console.log('updateCarouselArrows:', {
-        scrollLeft: container.scrollLeft,
-        scrollWidth: container.scrollWidth,
-        clientWidth: container.clientWidth,
-        hasOverflow,
-        canScrollLeft,
-        canScrollRight
-    });
     
     // Mostrar flechas según disponibilidad de scroll
     arrowLeft.style.opacity = canScrollLeft ? '1' : '0.5';
@@ -3005,6 +3461,29 @@ document.documentElement.classList.add('landing-mode');
 // Perform initial session check to determine routing
 checkSession();
 
+// Initialize clickable user elements system after DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait for ProfileViewer to be available
+    const initializeClickableElements = () => {
+        if (window.profileViewer && window.clickableUserElements) {
+            window.clickableUserElements.initialize(window.profileViewer);
+        } else {
+            // Retry after a short delay if components aren't ready yet
+            setTimeout(initializeClickableElements, 100);
+        }
+    };
+    
+    // Start initialization
+    initializeClickableElements();
+});
+
+// Helper function to enhance newly added content
+function enhanceNewContent(element) {
+    if (window.clickableUserElements && window.clickableUserElements.initialized) {
+        window.clickableUserElements.enhanceSpecificElement(element);
+    }
+}
+
 // Verificar sesión periódicamente para mantener sincronización
 setInterval(async () => {
     if (currentUserId) {
@@ -3021,3 +3500,62 @@ setInterval(async () => {
 }, 5 * 60 * 1000); // Cada 5 minutos
 
 
+// ========================
+// SOCIAL LISTS FUNCTIONS FOR USER'S OWN PROFILE
+// ========================
+
+// Show the current user's followers list
+function showOwnFollowersList() {
+    if (!currentUserId) {
+        console.error('No current user ID available');
+        showNotification('Error: Usuario no identificado', 'error');
+        return;
+    }
+    
+    if (!window.socialLists) {
+        console.error('SocialLists component not available');
+        showNotification('Error: Componente de listas sociales no disponible', 'error');
+        return;
+    }
+    
+    const username = currentUsername || 'Tu';
+    socialLists.showFollowers(currentUserId, username);
+}
+
+// Show the current user's following list
+function showOwnFollowingList() {
+    if (!currentUserId) {
+        console.error('No current user ID available');
+        showNotification('Error: Usuario no identificado', 'error');
+        return;
+    }
+    
+    if (!window.socialLists) {
+        console.error('SocialLists component not available');
+        showNotification('Error: Componente de listas sociales no disponible', 'error');
+        return;
+    }
+    
+    const username = currentUsername || 'Tú';
+    socialLists.showFollowing(currentUserId, username);
+}
+
+// Make functions available globally for onclick handlers
+window.showOwnFollowersList = showOwnFollowersList;
+window.showOwnFollowingList = showOwnFollowingList;
+
+// Update notification count in profile page
+function updateProfileNotificationCount() {
+    const profileUnreadCountEl = document.getElementById('profileUnreadCount');
+    if (profileUnreadCountEl && notificationSystem) {
+        if (notificationSystem.unreadCount > 0) {
+            profileUnreadCountEl.textContent = notificationSystem.unreadCount;
+            profileUnreadCountEl.style.display = 'inline';
+        } else {
+            profileUnreadCountEl.style.display = 'none';
+        }
+    }
+}
+
+// Make function available globally
+window.updateProfileNotificationCount = updateProfileNotificationCount;
