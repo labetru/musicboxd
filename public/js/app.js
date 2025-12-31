@@ -1395,6 +1395,18 @@ async function showProfile() {
     document.getElementById("searchContainer").style.display = "none";
     document.getElementById("albumFeed").style.display = "none";
     document.getElementById("albumDetailContainer").style.display = "none";
+    
+    // Hide profile viewer if it exists
+    const profileViewerContainer = document.getElementById("profileViewerContainer");
+    if (profileViewerContainer) {
+        profileViewerContainer.style.display = "none";
+    }
+    
+    // Hide profile viewer using the global instance
+    if (window.profileViewer) {
+        window.profileViewer.hide();
+    }
+    
     profileContainer.style.display = "block";
     
     loadUserProfile(currentUserId);
@@ -3054,8 +3066,14 @@ const notificationSystem = {
                     notificationElement.classList.remove('unread');
                 }
                 
-                // Update badge
-                await this.updateUnreadCount();
+                // Immediately update unread count locally
+                this.unreadCount = Math.max(0, this.unreadCount - 1);
+                this.updateBadge();
+                
+                // Then sync with server to ensure accuracy
+                setTimeout(() => {
+                    this.updateUnreadCount();
+                }, 500);
             }
         } catch (error) {
             console.error('Error marking notification as read:', error);
@@ -3070,17 +3088,38 @@ const notificationSystem = {
         }
         
         try {
-            // Mark all unread notifications as read
-            const promises = unreadNotifications.map(notification => 
-                this.markAsRead(notification.id)
-            );
+            // Immediately update local state
+            this.unreadCount = 0;
+            this.updateBadge();
             
-            await Promise.all(promises);
+            // Mark all as read on server
+            const response = await fetch(`${API_BASE_URL}/api/notifications/mark-all-read`, {
+                method: 'POST',
+                credentials: 'include'
+            });
             
-            // Refresh the panel
-            await this.loadNotifications();
+            if (response.ok) {
+                // Update local notification states
+                this.notifications.forEach(notification => {
+                    notification.is_read = true;
+                });
+                
+                // Update UI elements
+                const unreadElements = document.querySelectorAll('.notification-item.unread');
+                unreadElements.forEach(el => {
+                    el.classList.remove('unread');
+                });
+                
+                // Refresh the panel to show updated state
+                await this.loadNotifications();
+            } else {
+                // If server request failed, revert local state
+                this.updateUnreadCount();
+            }
         } catch (error) {
             console.error('Error marking all notifications as read:', error);
+            // Revert local state on error
+            this.updateUnreadCount();
         }
     },
     
@@ -3501,17 +3540,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Helper function to enhance newly added content
 function enhanceNewContent(element) {
-    if (window.clickableUserElements && window.clickableUserElements.initialized) {
-        window.clickableUserElements.enhanceSpecificElement(element);
-    } else {
-        // If not initialized yet, try to initialize and then enhance
-        setTimeout(() => {
-            if (window.profileViewer && window.clickableUserElements) {
-                window.clickableUserElements.initialize(window.profileViewer);
-                window.clickableUserElements.enhanceSpecificElement(element);
-            }
-        }, 100);
-    }
+    if (!element) return;
+    
+    // Add retry logic for better reliability
+    const enhanceWithRetry = (retryCount = 0) => {
+        if (window.clickableUserElements && window.clickableUserElements.initialized) {
+            window.clickableUserElements.enhanceSpecificElement(element);
+        } else if (retryCount < 3) {
+            // If not initialized yet, try to initialize and then enhance
+            setTimeout(() => {
+                if (window.profileViewer && window.clickableUserElements) {
+                    window.clickableUserElements.initialize(window.profileViewer);
+                    enhanceWithRetry(retryCount + 1);
+                } else {
+                    enhanceWithRetry(retryCount + 1);
+                }
+            }, 100 * (retryCount + 1)); // Increasing delay
+        } else {
+            console.warn('Failed to enhance clickable elements after 3 retries');
+        }
+    };
+    
+    enhanceWithRetry();
 }
 
 // Verificar sesión periódicamente para mantener sincronización

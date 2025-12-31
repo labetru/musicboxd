@@ -243,7 +243,7 @@ class ClickableUserElements {
         const userId = element.dataset.userId || this.findNearbyUserId(element);
         const username = element.textContent.trim() || element.dataset.username;
 
-        if (!userId || !username) {
+        if (!userId || !username || isNaN(parseInt(userId))) {
             return;
         }
 
@@ -327,7 +327,7 @@ class ClickableUserElements {
 
         const userId = img.dataset.userId || this.findNearbyUserId(img);
         
-        if (!userId) {
+        if (!userId || isNaN(parseInt(userId))) {
             return;
         }
 

@@ -11,7 +11,7 @@ class ProfileViewer {
     // Main function to show a user's public profile
     async showUserProfile(userId) {
         if (!userId || isNaN(parseInt(userId))) {
-            console.error('Invalid user ID provided to ProfileViewer');
+            console.error('Invalid user ID provided to ProfileViewer:', userId);
             return;
         }
 
@@ -54,6 +54,12 @@ class ProfileViewer {
         // Show navbar and profile container
         document.getElementById("navbar").style.display = "block";
         
+        // Hide the existing profile container (user's own profile) FIRST
+        const existingProfileContainer = document.getElementById("profileContainer");
+        if (existingProfileContainer) {
+            existingProfileContainer.style.display = "none";
+        }
+        
         // Create or show profile viewer container
         let profileViewerContainer = document.getElementById("profileViewerContainer");
         if (!profileViewerContainer) {
@@ -61,12 +67,6 @@ class ProfileViewer {
         }
         
         profileViewerContainer.style.display = "block";
-        
-        // Hide the existing profile container (user's own profile)
-        const existingProfileContainer = document.getElementById("profileContainer");
-        if (existingProfileContainer) {
-            existingProfileContainer.style.display = "none";
-        }
     }
 
     // Create the profile viewer container HTML structure
@@ -448,7 +448,15 @@ class ProfileViewer {
             this.followButton = null;
         }
         
+        // Reset state
         this.currentProfileUserId = null;
+        this.isLoading = false;
+        
+        // Clear the content to prevent stale data
+        const content = document.getElementById("profileViewerContent");
+        if (content) {
+            content.innerHTML = '';
+        }
     }
 }
 

@@ -2503,6 +2503,36 @@ app.post("/api/notifications/:id/read", async (req, res) => {
   }
 });
 
+// Marcar todas las notificaciones como leídas
+app.post("/api/notifications/mark-all-read", async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "No autorizado" });
+  }
+
+  try {
+    // Marcar todas las notificaciones no leídas como leídas
+    const [result] = await pool.query(
+      "UPDATE notifications SET is_read = TRUE WHERE user_id = ? AND is_read = FALSE",
+      [req.session.userId]
+    );
+
+    console.log(`${result.affectedRows} notificaciones marcadas como leídas para usuario ${req.session.userId}`);
+
+    // Invalidate notification count cache
+    notificationCountCache.delete(`notification_count_${req.session.userId}`);
+
+    res.json({
+      success: true,
+      message: `${result.affectedRows} notificaciones marcadas como leídas`,
+      markedCount: result.affectedRows
+    });
+
+  } catch (err) {
+    console.error("Error al marcar todas las notificaciones como leídas:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
 /* ==============================
    FUNCIONES AUXILIARES DE NOTIFICACIONES
 ============================== */
