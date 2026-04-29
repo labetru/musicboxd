@@ -144,6 +144,28 @@ app.use(session({
     },
 }));
 
+// Middleware unificado: si llega un JWT válido en Authorization header,
+// inyecta req.session.userId para que todos los endpoints existentes funcionen
+// sin cambios, tanto desde web (sesión) como desde móvil (JWT).
+app.use((req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ') && !req.session.userId) {
+        const token = authHeader.slice(7);
+        const secret = process.env.JWT_SECRET;
+        if (secret) {
+            try {
+                const decoded = jwt.verify(token, secret);
+                req.session.userId = decoded.userId;
+                req.session.username = decoded.username;
+                req.session.role = decoded.role;
+            } catch (err) {
+                // Token inválido — no inyectar, dejar que el endpoint maneje el 401
+            }
+        }
+    }
+    next();
+});
+
 /* ==============================
    SPOTIFY API
 ============================== */
