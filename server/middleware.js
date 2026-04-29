@@ -1,4 +1,5 @@
 import { pool } from './db.js';
+import jwt from 'jsonwebtoken';
 
 // Middleware para verificar autenticación
 export function requireAuth(req, res, next) {
@@ -27,7 +28,7 @@ export function requireAdmin(req, res, next) {
     });
 }
 
-// Middleware para verificar si el usuario está bloqueado
+// Middleware para verificar bloqueo de usuario
 export function checkUserBlocked(req, res, next) {
   if (!req.session.userId) {
     return next();
@@ -45,4 +46,57 @@ export function checkUserBlocked(req, res, next) {
       console.error("Error verificando bloqueo:", err);
       next();
     });
+}
+
+// Middleware JWT para clientes móviles
+// Valida el header Authorization: Bearer <token>
+export function requireJwt(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Token JWT requerido' });
+  }
+
+  const token = authHeader.slice(7); // Remove "Bearer "
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    console.error('JWT_SECRET no está configurado en las variables de entorno');
+    return res.status(500).json({ error: 'Error de configuración del servidor' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, secret);
+    req.jwtUser = decoded; // { userId, username, role }
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Token JWT inválido o expirado' });
+  }
+}
+
+// Middleware JWT para rutas de admin en clientes móviles
+// Requiere JWT válido con role === 'admin'
+export function requireJwtAdmin(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Token JWT requerido' });
+  }
+
+  const token = authHeader.slice(7);
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    console.error('JWT_SECRET no está configurado en las variables de entorno');
+    return res.status(500).json({ error: 'Error de configuración del servidor' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, secret);
+    if (decoded.role !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado - Solo administradores' });
+    }
+    req.jwtUser = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Token JWT inválido o expirado' });
+  }
 }

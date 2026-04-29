@@ -3,9 +3,11 @@ import fetch from "node-fetch";
 import cors from "cors";
 import bcrypt from "bcrypt";
 import session from "express-session";
+import jwt from "jsonwebtoken";
 import { pool } from "./db.js"; 
 import { config } from "./config.js";
 import { profileCache, socialStatsCache, topReviewsCache, notificationCountCache } from "./cache.js";
+import { requireJwt, requireJwtAdmin } from "./middleware.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
@@ -259,6 +261,251 @@ app.post("/login", async (req, res) => {
 app.post("/logout", (req, res) => {
   req.session.destroy();
   res.json({ success: true });
+});
+
+/* ==============================
+   RUTAS MÓVILES (JWT)
+============================== */
+
+// Login móvil — retorna JWT firmado con userId, username y role
+// Coexiste con el login de sesión web sin afectarlo (Requirement 10.4)
+app.post("/login-mobile", async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "Usuario y contraseña requeridos" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      "SELECT id, username, password, role, is_blocked, blocked_reason FROM users WHERE username = ?",
+      [username]
+    );
+
+    if (rows.length === 0) {
+      return res.status(401).json({ error: "Usuario no encontrado" });
+    }
+
+    const user = rows[0];
+
+    if (user.is_blocked) {
+      return res.status(403).json({
+        error: "Cuenta bloqueada",
+        message: `Tu cuenta ha sido bloqueada. Razón: ${user.blocked_reason || 'No especificada'}`
+      });
+    }
+
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) {
+      return res.status(401).json({ error: "Contraseña incorrecta" });
+    }
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      console.error("JWT_SECRET no configurado");
+      return res.status(500).json({ error: "Error de configuración del servidor" });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, username: user.username, role: user.role },
+      secret,
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      success: true,
+      token,
+      userId: user.id,
+      username: user.username,
+      role: user.role
+    });
+  } catch (err) {
+    console.error("Error en /login-mobile:", err);
+    res.status(500).json({ error: "Error en el servidor" });
+  }
+});
+
+// Endpoint protegido por JWT — devuelve datos del usuario autenticado
+// Requirement 10.2, 10.3
+app.get("/me-mobile", requireJwt, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT id, username, role, is_blocked, profile_pic_url FROM users WHERE id = ?",
+      [req.jwtUser.userId]
+    );
+
+    if (rows.length === 0 || rows[0].is_blocked) {
+      return res.status(401).json({ error: "Usuario no encontrado o bloqueado" });
+    }
+
+    const user = rows[0];
+    res.json({
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      profilePictureUrl: user.profile_pic_url
+    });
+  } catch (err) {
+    console.error("Error en /me-mobile:", err);
+    res.status(500).json({ error: "Error en el servidor" });
+  }
+});
+
+// Upload de foto de perfil para clientes móviles (JWT)
+// Requirement 5.2
+app.post("/user/upload-photo-mobile", requireJwt, upload.single('profilePicture'), handleMulterError, async (req, res) => {
+  const userId = req.jwtUser.userId;
+  console.log(`Mobile upload request from user: ${userId}`);
+
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: "No se subió ningún archivo." });
+  }
+
+  if (!validateFileExists(req.file.path)) {
+    return res.status(500).json({ success: false, error: "El archivo subido no es accesible" });
+  }
+
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const timestamp = Date.now();
+  const correctFilename = `${userId}_profile_${timestamp}${ext}`;
+  const correctFilePath = path.join(path.dirname(req.file.path), correctFilename);
+
+  fs.renameSync(req.file.path, correctFilePath);
+
+  const relativePath = `/uploads/profile_pics/${correctFilename}`;
+
+  try {
+    await pool.query('START TRANSACTION');
+
+    const [userRows] = await pool.query(
+      "SELECT profile_pic_url FROM users WHERE id = ?",
+      [userId]
+    );
+
+    if (userRows.length === 0) {
+      await pool.query('ROLLBACK');
+      await safeDeleteFile(correctFilePath);
+      return res.status(404).json({ success: false, error: "Usuario no encontrado" });
+    }
+
+    const [result] = await pool.query(
+      "UPDATE users SET profile_pic_url = ? WHERE id = ?",
+      [relativePath, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      await pool.query('ROLLBACK');
+      await safeDeleteFile(correctFilePath);
+      return res.status(500).json({ success: false, error: "No se pudo actualizar el perfil" });
+    }
+
+    await pool.query('COMMIT');
+    await cleanupOldProfilePictures(userId, correctFilename);
+
+    res.json({
+      success: true,
+      url: relativePath,
+      message: "Foto de perfil actualizada correctamente"
+    });
+  } catch (err) {
+    console.error("Error en /user/upload-photo-mobile:", err);
+    try { await pool.query('ROLLBACK'); } catch (_) {}
+    await safeDeleteFile(correctFilePath);
+    res.status(500).json({ success: false, error: "Error interno del servidor" });
+  }
+});
+
+/* ==============================
+   RUTAS DE ADMIN MÓVIL (JWT)
+============================== */
+
+// Obtener todos los usuarios — admin móvil (JWT)
+// Requirements: 9.2
+app.get("/admin-mobile/users", requireJwtAdmin, async (req, res) => {
+  try {
+    const [users] = await pool.query(`
+      SELECT 
+        u.id, 
+        u.username, 
+        u.email, 
+        u.role, 
+        u.is_blocked,
+        u.blocked_reason,
+        u.created_at,
+        COUNT(r.id) as review_count
+      FROM users u
+      LEFT JOIN reviews r ON u.id = r.user_id
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+    `);
+    res.json(users);
+  } catch (err) {
+    console.error("Error obteniendo usuarios (mobile admin):", err);
+    res.status(500).json({ error: "Error obteniendo usuarios" });
+  }
+});
+
+// Bloquear usuario — admin móvil (JWT)
+// Requirements: 9.3
+app.post("/admin-mobile/users/:userId/block", requireJwtAdmin, async (req, res) => {
+  const { userId } = req.params;
+  const { reason } = req.body;
+
+  if (!reason || reason.trim().length === 0) {
+    return res.status(400).json({ error: "La razón del bloqueo es obligatoria" });
+  }
+
+  try {
+    await pool.query('START TRANSACTION');
+
+    await pool.query(`
+      UPDATE users 
+      SET is_blocked = TRUE, blocked_reason = ?, blocked_at = NOW(), blocked_by = ?
+      WHERE id = ?
+    `, [reason.trim(), req.jwtUser.userId, userId]);
+
+    await pool.query(`
+      UPDATE reviews 
+      SET is_hidden = TRUE, hidden_reason = ?, hidden_at = NOW(), hidden_by = ?
+      WHERE user_id = ?
+    `, [`Usuario bloqueado: ${reason.trim()}`, req.jwtUser.userId, userId]);
+
+    await pool.query('COMMIT');
+    res.json({ success: true, message: "Usuario bloqueado correctamente" });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error("Error bloqueando usuario (mobile admin):", err);
+    res.status(500).json({ error: "Error al bloquear usuario" });
+  }
+});
+
+// Desbloquear usuario — admin móvil (JWT)
+// Requirements: 9.4
+app.post("/admin-mobile/users/:userId/unblock", requireJwtAdmin, async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    await pool.query('START TRANSACTION');
+
+    await pool.query(`
+      UPDATE users 
+      SET is_blocked = FALSE, blocked_reason = NULL, blocked_at = NULL, blocked_by = NULL
+      WHERE id = ?
+    `, [userId]);
+
+    await pool.query(`
+      UPDATE reviews 
+      SET is_hidden = FALSE, hidden_reason = NULL, hidden_at = NULL, hidden_by = NULL
+      WHERE user_id = ? AND hidden_reason LIKE 'Usuario bloqueado:%'
+    `, [userId]);
+
+    await pool.query('COMMIT');
+    res.json({ success: true, message: "Usuario desbloqueado correctamente" });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error("Error desbloqueando usuario (mobile admin):", err);
+    res.status(500).json({ error: "Error al desbloquear usuario" });
+  }
 });
 
 // Enhanced session endpoint with dual verification
@@ -3495,6 +3742,51 @@ app.post("/reports", async (req, res) => {
 
   } catch (err) {
     console.error("Error creando reporte:", err);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
+// Crear un reporte desde cliente móvil (JWT)
+// Requirement 8.1, 8.2, 8.3
+app.post("/reports-mobile", requireJwt, async (req, res) => {
+  const reporterId = req.jwtUser.userId;
+  const { reportedReviewId, reason, description } = req.body;
+
+  if (!reportedReviewId) {
+    return res.status(400).json({ error: "Debe especificar una reseña a reportar" });
+  }
+
+  const validReasons = ['spam', 'inappropriate', 'harassment', 'fake', 'other'];
+  if (!reason || !validReasons.includes(reason)) {
+    return res.status(400).json({ error: "Razón de reporte inválida" });
+  }
+
+  try {
+    const [reviewCheck] = await pool.query("SELECT id, user_id FROM reviews WHERE id = ?", [reportedReviewId]);
+    if (reviewCheck.length === 0) {
+      return res.status(404).json({ error: "Reseña no encontrada" });
+    }
+    if (reviewCheck[0].user_id === reporterId) {
+      return res.status(400).json({ error: "No puedes reportar tu propia reseña" });
+    }
+
+    const [existingReport] = await pool.query(
+      `SELECT id FROM reports WHERE reporter_id = ? AND reported_review_id = ? AND status = 'pending'`,
+      [reporterId, reportedReviewId]
+    );
+    if (existingReport.length > 0) {
+      return res.status(400).json({ error: "Ya has reportado esta reseña" });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO reports (reporter_id, reported_user_id, reported_review_id, reason, description) VALUES (?, NULL, ?, ?, ?)`,
+      [reporterId, reportedReviewId, reason, description || null]
+    );
+
+    console.log(`Reporte móvil creado: ID ${result.insertId} por usuario ${reporterId}`);
+    res.json({ success: true, message: "Reporte enviado correctamente.", reportId: result.insertId });
+  } catch (err) {
+    console.error("Error creando reporte móvil:", err);
     res.status(500).json({ error: "Error interno del servidor" });
   }
 });
