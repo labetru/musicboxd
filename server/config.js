@@ -14,9 +14,15 @@ export const config = {
   server: {
     port: process.env.PORT || 3000,
     cors: {
-      origin: process.env.NODE_ENV === 'production' 
-        ? [process.env.FRONTEND_URL] 
-        : ["http://127.0.0.1:5500", "http://localhost:8080", "http://localhost:5500", "http://localhost:3000"]
+      origin: process.env.NODE_ENV === 'production'
+        ? [
+            process.env.FRONTEND_URL,
+            'http://localhost:8100',
+            'http://localhost:4200',
+            'capacitor://localhost',
+            'ionic://localhost',
+          ].filter(Boolean)
+        : ["http://127.0.0.1:5500", "http://localhost:8080", "http://localhost:5500", "http://localhost:3000", "http://localhost:8100", "http://localhost:4200"]
     }
   },
   
