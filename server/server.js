@@ -3302,6 +3302,67 @@ app.get('/albums/top', async (req, res) => {
     }
 });
 
+// Reseñas destacadas de alta calificación (4-5 estrellas) para la home móvil
+app.get("/reviews/featured", async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 6, 20);
+    try {
+        const [reviewsRows] = await pool.query(`
+            SELECT r.id, r.spotify_id, r.stars, r.comment, r.user_id,
+                   u.username, u.profile_pic_url
+            FROM reviews r
+            JOIN users u ON r.user_id = u.id
+            WHERE r.type = 'album' AND r.is_hidden = FALSE
+              AND u.is_blocked = FALSE AND r.stars >= 4
+            ORDER BY RAND()
+            LIMIT ?
+        `, [limit]);
+
+        if (reviewsRows.length === 0) return res.json([]);
+
+        const token = await getToken();
+        if (!token) return res.json([]);
+
+        const spotifyIds = [...new Set(reviewsRows.map(r => r.spotify_id))];
+        const response = await fetch(
+            `https://api.spotify.com/v1/albums?ids=${spotifyIds.join(",")}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        const albumMap = new Map();
+        if (response.ok) {
+            const data = await response.json();
+            (data.albums || []).filter(a => a !== null).forEach(album => {
+                albumMap.set(album.id, {
+                    albumName: album.name,
+                    artistName: album.artists[0]?.name || 'Artista Desconocido',
+                    albumCoverUrl: album.images[0]?.url || 'https://placehold.co/100x100/333/fff?text=No+Cover'
+                });
+            });
+        }
+
+        const enriched = reviewsRows.map(r => {
+            const album = albumMap.get(r.spotify_id) || {};
+            return {
+                reviewId: r.id,
+                spotifyId: r.spotify_id,
+                userId: r.user_id,
+                username: r.username,
+                profilePicUrl: r.profile_pic_url,
+                stars: r.stars,
+                comment: r.comment,
+                albumName: album.albumName || 'Álbum Desconocido',
+                artistName: album.artistName || 'Artista Desconocido',
+                albumCoverUrl: album.albumCoverUrl || 'https://placehold.co/100x100/333/fff?text=No+Cover'
+            };
+        });
+
+        res.json(enriched);
+    } catch (err) {
+        console.error("Error al obtener reseñas destacadas:", err);
+        res.status(500).json([]);
+    }
+});
+
 // Reseñas aleatorias
 app.get("/reviews/random", async (req, res) => {
     try {
