@@ -128,7 +128,15 @@ app.use('/uploads/profile_pics', (req, res, next) => {
 
 app.use(express.static(path.join(__dirname, "../public")));
 app.use(cors({
-    origin: config.server.cors.origin,
+    origin: (origin, callback) => {
+        // Allow requests with no origin (native mobile apps, Capacitor, curl)
+        if (!origin) return callback(null, true);
+        const allowed = config.server.cors.origin;
+        if (Array.isArray(allowed) ? allowed.includes(origin) : allowed === origin) {
+            return callback(null, true);
+        }
+        return callback(null, false);
+    },
     credentials: true,
 }));
 app.use(express.json());
