@@ -432,6 +432,9 @@ app.post("/user/upload-photo-mobile", requireJwt, upload.single('profilePicture'
     await pool.query('COMMIT');
     await cleanupOldProfilePictures(userId, correctFilename);
 
+    // Invalidate profile cache so next request returns fresh data
+    profileCache.delete(`profile_${userId}`);
+
     res.json({
       success: true,
       url: relativePath,
@@ -1377,9 +1380,9 @@ app.get("/api/users/:userId/profile", async (req, res) => {
   }
 
   try {
-    // Try to get from cache first
+    // Try to get from cache first — skip cache if ?t= param present (cache-bust)
     const cacheKey = `profile_${targetUserId}`;
-    const cachedProfile = profileCache.get(cacheKey);
+    const cachedProfile = req.query.t ? null : profileCache.get(cacheKey);
     
     if (cachedProfile) {
       // Add cache headers
